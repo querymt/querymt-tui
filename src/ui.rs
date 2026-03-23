@@ -320,6 +320,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     match app.popup {
         Popup::ModelSelect => draw_model_popup(f, app),
         Popup::SessionSelect => draw_session_popup(f, app),
+        Popup::NewSession => draw_new_session_popup(f, app),
         Popup::ThemeSelect => draw_theme_popup(f, app),
         Popup::Help => draw_help_popup(f, app),
         Popup::None => {}
@@ -2137,7 +2138,7 @@ fn draw_session_popup(f: &mut Frame, app: &App) {
     // hint
     f.render_widget(
         Paragraph::new(Span::styled(
-            " esc cancel  enter load/collapse  del delete  C-x n new",
+            " esc cancel  enter load/collapse  del delete  ctrl-n new",
             Theme::status(),
         ))
         .style(Theme::popup_bg()),
@@ -2205,6 +2206,92 @@ fn build_theme_list_item(
     }
 
     ListItem::new(Line::from(spans))
+}
+
+fn draw_new_session_popup(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let show_completion = app
+        .new_session_completion
+        .as_ref()
+        .map(|completion| !completion.results.is_empty())
+        .unwrap_or(false);
+    let popup_width = area.width.saturating_sub(4).min(72).max(24);
+    let popup_height = area.height.saturating_sub(4).min(if show_completion { 10 } else { 6 }).max(4);
+    let popup_area = Rect {
+        x: area.x + area.width.saturating_sub(popup_width) / 2,
+        y: area.y + area.height.saturating_sub(popup_height) / 2,
+        width: popup_width,
+        height: popup_height,
+    };
+
+    f.render_widget(Clear, popup_area);
+    f.render_widget(Block::default().style(Theme::popup_bg()), popup_area);
+
+    let inner = Rect {
+        x: popup_area.x + 1,
+        y: popup_area.y + 1,
+        width: popup_area.width.saturating_sub(2),
+        height: popup_area.height.saturating_sub(2),
+    };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    f.render_widget(
+        Paragraph::new(Span::styled("new session", Theme::popup_title())).style(Theme::popup_bg()),
+        chunks[0],
+    );
+    f.render_widget(
+        Paragraph::new(Span::styled(
+            "workspace path (empty = default cwd)",
+            Theme::status(),
+        ))
+        .style(Theme::popup_bg()),
+        chunks[1],
+    );
+    f.render_widget(
+        Paragraph::new(format!("> {}", app.new_session_path)).style(Theme::popup_bg()),
+        chunks[2],
+    );
+    f.set_cursor_position((chunks[2].x + 2 + app.new_session_cursor as u16, chunks[2].y));
+
+    if let Some(completion) = &app.new_session_completion {
+        if !completion.results.is_empty() {
+            let items: Vec<ListItem> = completion
+                .results
+                .iter()
+                .map(|entry| {
+                    ListItem::new(Line::from(vec![Span::styled(
+                        entry.path.clone(),
+                        Theme::input(),
+                    )]))
+                })
+                .collect();
+            let list = List::new(items)
+                .block(Block::default().style(Theme::popup_bg()))
+                .highlight_style(Theme::selected())
+                .highlight_symbol("");
+            let selected = Some(completion.selected_index).filter(|_| !completion.results.is_empty());
+            let mut state = ListState::default().with_selected(selected);
+            f.render_stateful_widget(list, chunks[3], &mut state);
+        }
+    }
+
+    f.render_widget(
+        Paragraph::new(Span::styled(
+            "tab complete  enter start  esc cancel",
+            Theme::status(),
+        ))
+        .style(Theme::popup_bg()),
+        chunks[4],
+    );
 }
 
 fn draw_theme_popup(f: &mut Frame, app: &App) {
@@ -2553,7 +2640,7 @@ mod tests {
         let mut app = App::new();
         app.popup = Popup::SessionSelect;
         app.session_id = Some("s2".into());
-        app.session_groups = vec![make_group(Some("/a"), &["s1", "s2"])];
+        app.session_groups = vec![make_group(Some("/a"), &["s1", "s2"] )];
 
         let backend = ratatui::backend::TestBackend::new(80, 20);
         let mut terminal = ratatui::Terminal::new(backend).unwrap();
@@ -2567,6 +2654,40 @@ mod tests {
 
         assert!(rendered.contains("active"));
     }
+
+    #[test]
+    fn draw_new_session_popup_shows_compact_default_cwd_hint() {
+        let mut app = App::new();
+        app.popup = Popup::NewSession;
+        app.new_session_path = "/launch".into();
+        app.new_session_cursor = app.new_session_path.len();
+        app.new_session_completion = Some(crate::app::PathCompletionState {
+            query: "/launch".into(),
+            selected_index: 0,
+            results: vec![crate::app::FileIndexEntryLite {
+                path: "/launch/project".into(),
+                is_dir: true,
+            }],
+        });
+
+        let backend = ratatui::backend::TestBackend::new(80, 12);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw_new_session_popup(f, &app)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let rendered = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(rendered.contains("new session"));
+        assert!(rendered.contains("workspace path (empty = default cwd)"));
+        assert!(rendered.contains("> /launch"));
+        assert!(rendered.contains("/launch/project"));
+        assert!(!rendered.contains("[D]"));
+        assert!(rendered.contains("tab complete  enter start  esc cancel"));
+    }
+
 
     #[test]
     fn message_cards_empty() {

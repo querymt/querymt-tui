@@ -217,13 +217,16 @@ mod tests {
 #[command(name = "qmt-tui", about = "querymt terminal interface")]
 struct Cli {
     /// Server address (e.g. 127.0.0.1:3030). Overrides the value in ~/.qmt/tui.toml.
-    #[arg(short, long)]
-    addr: Option<String>,
-
-    /// Use TLS (wss://). Overrides the value in ~/.qmt/tui.toml.
     #[arg(long)]
-    tls: Option<bool>,
+    server: Option<String>,
 }
+
+fn detect_launch_cwd() -> Option<String> {
+    std::env::current_dir()
+        .ok()
+        .and_then(|path| path.into_os_string().into_string().ok())
+}
+
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -233,13 +236,10 @@ async fn main() -> anyhow::Result<()> {
     let cfg = config::TuiConfig::load();
 
     let addr = cli
-        .addr
+        .server
         .or_else(|| cfg.server.addr.clone())
         .unwrap_or_else(|| "127.0.0.1:3030".to_string());
-    let tls = cli
-        .tls
-        .or(cfg.server.tls)
-        .unwrap_or(false);
+    let tls = cfg.server.tls.unwrap_or(false);
 
     // Apply saved theme (falls back to built-in default if absent or unknown).
     let theme_id = cfg.theme.as_deref().unwrap_or("base16-querymate");
@@ -263,6 +263,7 @@ async fn main() -> anyhow::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new();
+    app.launch_cwd = detect_launch_cwd();
     // Hydrate session effort cache from disk.
     config::TuiCache::load().hydrate_app(&mut app);
     let result = run_loop(&mut terminal, &mut app, &mut srv_rx, &mut conn_rx, &cmd_tx).await;
@@ -616,7 +617,59 @@ fn handle_key(
         return Ok(());
     }
 
-    // global: tab toggles mode
+    // direct: ctrl+t cycles thinking level
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('t') {
+        let msg = app.cycle_reasoning_effort();
+        cmd_tx.send(msg)?;
+        app.status = format!("thinking: {}", app.reasoning_effort_label());
+        save_cache(app);
+        return Ok(());
+    }
+
+    // chord start: ctrl+x
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('x') {
+        app.chord = true;
+        app.status = "C-x ...".into();
+        return Ok(());
+    }
+
+    // popup handling
+    match app.popup {
+        Popup::ModelSelect => {
+            handle_model_popup_key(app, key, cmd_tx)?;
+            return Ok(());
+        }
+        Popup::SessionSelect => {
+            handle_session_popup_key(app, key, cmd_tx)?;
+            return Ok(());
+        }
+        Popup::NewSession => {
+            handle_new_session_popup_key(app, key, cmd_tx)?;
+            return Ok(());
+        }
+        Popup::ThemeSelect => {
+            handle_theme_popup_key(app, key)?;
+            return Ok(());
+        }
+        Popup::Help => {
+            match key.code {
+                KeyCode::Esc => {
+                    app.popup = Popup::None;
+                }
+                KeyCode::Up => {
+                    app.help_scroll = app.help_scroll.saturating_sub(1);
+                }
+                KeyCode::Down => {
+                    app.help_scroll = app.help_scroll.saturating_add(1);
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+        Popup::None => {}
+    }
+
+    // global: tab toggles mode when no popup is active
     if key.code == KeyCode::Tab {
         if !can_send_server_commands(app) {
             return Ok(());
@@ -649,54 +702,6 @@ fn handle_key(
         save_config(app);
         save_cache(app);
         return Ok(());
-    }
-
-    // direct: ctrl+t cycles thinking level
-    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('t') {
-        let msg = app.cycle_reasoning_effort();
-        cmd_tx.send(msg)?;
-        app.status = format!("thinking: {}", app.reasoning_effort_label());
-        save_cache(app);
-        return Ok(());
-    }
-
-    // chord start: ctrl+x
-    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('x') {
-        app.chord = true;
-        app.status = "C-x ...".into();
-        return Ok(());
-    }
-
-    // popup handling
-    match app.popup {
-        Popup::ModelSelect => {
-            handle_model_popup_key(app, key, cmd_tx)?;
-            return Ok(());
-        }
-        Popup::SessionSelect => {
-            handle_session_popup_key(app, key, cmd_tx)?;
-            return Ok(());
-        }
-        Popup::ThemeSelect => {
-            handle_theme_popup_key(app, key)?;
-            return Ok(());
-        }
-        Popup::Help => {
-            match key.code {
-                KeyCode::Esc => {
-                    app.popup = Popup::None;
-                }
-                KeyCode::Up => {
-                    app.help_scroll = app.help_scroll.saturating_sub(1);
-                }
-                KeyCode::Down => {
-                    app.help_scroll = app.help_scroll.saturating_add(1);
-                }
-                _ => {}
-            }
-            return Ok(());
-        }
-        Popup::None => {}
     }
 
     match app.screen {
@@ -733,10 +738,7 @@ fn handle_chord(
             if !can_send_server_commands(app) {
                 return Ok(());
             }
-            cmd_tx.send(ClientMsg::NewSession {
-                cwd: None,
-                request_id: None,
-            })?;
+            app.open_new_session_popup();
         }
         KeyCode::Char('q') => {
             app.should_quit = true;
@@ -834,10 +836,7 @@ fn handle_sessions_key(
             cmd_tx.send(ClientMsg::DeleteSession { session_id })?;
         }
         SessionKeyAction::NewSession => {
-            cmd_tx.send(ClientMsg::NewSession {
-                cwd: None,
-                request_id: None,
-            })?;
+            app.open_new_session_popup();
         }
         SessionKeyAction::None => {}
     }
@@ -849,6 +848,14 @@ fn handle_session_popup_key(
     key: KeyEvent,
     cmd_tx: &mpsc::UnboundedSender<ClientMsg>,
 ) -> anyhow::Result<()> {
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('n') {
+        if !can_send_server_commands(app) {
+            return Ok(());
+        }
+        app.open_new_session_popup();
+        return Ok(());
+    }
+
     match apply_popup_session_key(app, key.code) {
         SessionKeyAction::LoadSession { session_id } => {
             cmd_tx.send(ClientMsg::LoadSession {
@@ -947,6 +954,69 @@ pub(crate) fn apply_popup_session_key(
         _ => {}
     }
     SessionKeyAction::None
+}
+
+fn handle_new_session_popup_key(
+    app: &mut App,
+    key: KeyEvent,
+    cmd_tx: &mpsc::UnboundedSender<ClientMsg>,
+) -> anyhow::Result<()> {
+    match key.code {
+        KeyCode::Esc => {
+            app.popup = Popup::None;
+        }
+        KeyCode::Up => {
+            app.move_new_session_completion_selection(-1);
+        }
+        KeyCode::Down => {
+            app.move_new_session_completion_selection(1);
+        }
+        KeyCode::Tab => {
+            app.accept_selected_new_session_completion();
+        }
+        KeyCode::Left => {
+            app.new_session_cursor = app.new_session_cursor.saturating_sub(1);
+            app.refresh_new_session_completion();
+        }
+        KeyCode::Right => {
+            app.new_session_cursor = (app.new_session_cursor + 1).min(app.new_session_path.len());
+            app.refresh_new_session_completion();
+        }
+        KeyCode::Home => {
+            app.new_session_cursor = 0;
+            app.refresh_new_session_completion();
+        }
+        KeyCode::End => {
+            app.new_session_cursor = app.new_session_path.len();
+            app.refresh_new_session_completion();
+        }
+        KeyCode::Backspace => {
+            if app.new_session_cursor > 0 && !app.new_session_path.is_empty() {
+                let idx = app.new_session_cursor - 1;
+                app.new_session_path.remove(idx);
+                app.new_session_cursor = idx;
+            }
+            app.refresh_new_session_completion();
+        }
+        KeyCode::Char(c) => {
+            app.new_session_path.insert(app.new_session_cursor, c);
+            app.new_session_cursor += 1;
+            app.refresh_new_session_completion();
+        }
+        KeyCode::Enter => {
+            if !can_send_server_commands(app) {
+                return Ok(());
+            }
+            let cwd = app.normalize_new_session_path(&app.new_session_path);
+            app.popup = Popup::None;
+            cmd_tx.send(ClientMsg::NewSession {
+                cwd,
+                request_id: None,
+            })?;
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn handle_theme_popup_key(app: &mut App, key: KeyEvent) -> anyhow::Result<()> {
@@ -1805,12 +1875,167 @@ mod session_popup_key_tests {
     fn popup_char_appends_to_filter_and_resets_cursor() {
         let mut app = App::new();
         app.popup = Popup::SessionSelect;
-        app.session_groups = vec![make_group(Some("/a"), &["s1"])];
+        app.session_groups = vec![make_group(Some("/a"), &["s1"] )];
         app.session_cursor = 1;
         apply_popup_session_key(&mut app, KeyCode::Char('x'));
         assert_eq!(app.session_filter, "x");
         assert_eq!(app.session_cursor, 0);
     }
+
+    #[test]
+    fn popup_ctrl_n_opens_new_session_popup() {
+        let mut app = App::new();
+        app.popup = Popup::SessionSelect;
+        app.conn = crate::app::ConnState::Connected;
+        app.launch_cwd = Some("/launch".into());
+
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        handle_session_popup_key(
+            &mut app,
+            KeyEvent {
+                code: KeyCode::Char('n'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: crossterm::event::KeyEventKind::Press,
+                state: crossterm::event::KeyEventState::NONE,
+            },
+            &cmd_tx,
+        )
+        .unwrap();
+
+        assert_eq!(app.popup, Popup::NewSession);
+        assert_eq!(app.new_session_path, "/launch");
+        assert!(cmd_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn popup_plain_n_still_filters_instead_of_creating_session() {
+        let mut app = App::new();
+        app.popup = Popup::SessionSelect;
+        app.session_groups = vec![make_group(Some("/a"), &["s1"] )];
+
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        handle_session_popup_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE),
+            &cmd_tx,
+        )
+        .unwrap();
+
+        assert_eq!(app.popup, Popup::SessionSelect);
+        assert_eq!(app.session_filter, "n");
+        assert!(cmd_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn global_ctrl_x_n_opens_new_session_popup() {
+        let mut app = App::new();
+        app.conn = crate::app::ConnState::Connected;
+        app.launch_cwd = Some("/launch".into());
+        let (tx, mut rx) = mpsc::unbounded_channel();
+
+        handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL),
+            &tx,
+        )
+        .unwrap();
+        handle_key(&mut app, KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE), &tx).unwrap();
+
+        assert_eq!(app.popup, Popup::NewSession);
+        assert_eq!(app.new_session_path, "/launch");
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn new_session_popup_enter_with_empty_path_uses_launch_cwd() {
+        let mut app = App::new();
+        app.conn = crate::app::ConnState::Connected;
+        app.popup = Popup::NewSession;
+        app.launch_cwd = Some("/launch".into());
+        app.new_session_path.clear();
+        app.new_session_cursor = 0;
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        handle_new_session_popup_key(&mut app, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tx)
+            .unwrap();
+
+        assert_eq!(app.popup, Popup::None);
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(ClientMsg::NewSession {
+                cwd: Some(ref cwd),
+                request_id: None
+            }) if cwd == "/launch"
+        ));
+    }
+
+    #[test]
+    fn new_session_popup_enter_normalizes_relative_path_to_absolute() {
+        let mut app = App::new();
+        app.conn = crate::app::ConnState::Connected;
+        app.popup = Popup::NewSession;
+        app.launch_cwd = Some("/launch".into());
+        app.new_session_path = "proj/subdir".into();
+        app.new_session_cursor = app.new_session_path.len();
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        handle_new_session_popup_key(&mut app, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tx)
+            .unwrap();
+
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(ClientMsg::NewSession {
+                cwd: Some(ref cwd),
+                request_id: None
+            }) if cwd == "/launch/proj/subdir"
+        ));
+    }
+
+    #[test]
+    fn new_session_popup_tab_accepts_selected_completion() {
+        let mut app = App::new();
+        app.popup = Popup::NewSession;
+        app.new_session_completion = Some(crate::app::PathCompletionState {
+            query: "pro".into(),
+            selected_index: 0,
+            results: vec![crate::app::FileIndexEntryLite {
+                path: "/launch/project".into(),
+                is_dir: true,
+            }],
+        });
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        handle_new_session_popup_key(&mut app, KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), &tx)
+            .unwrap();
+
+        assert_eq!(app.new_session_path, "/launch/project/");
+        assert!(app.new_session_completion.is_none());
+    }
+
+    #[test]
+    fn handle_key_routes_tab_to_new_session_popup_before_global_mode_switch() {
+        let mut app = App::new();
+        app.conn = crate::app::ConnState::Connected;
+        app.popup = Popup::NewSession;
+        app.agent_mode = "build".into();
+        app.new_session_completion = Some(crate::app::PathCompletionState {
+            query: "pro".into(),
+            selected_index: 0,
+            results: vec![crate::app::FileIndexEntryLite {
+                path: "/launch/project".into(),
+                is_dir: true,
+            }],
+        });
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        handle_key(&mut app, KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), &tx).unwrap();
+
+        assert_eq!(app.new_session_path, "/launch/project/");
+        assert!(app.new_session_completion.is_none());
+        assert_eq!(app.agent_mode, "build");
+        assert!(rx.try_recv().is_err());
+    }
+
 
     #[test]
     fn popup_backspace_removes_last_filter_char_and_resets_cursor() {
