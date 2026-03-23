@@ -227,7 +227,6 @@ fn detect_launch_cwd() -> Option<String> {
         .and_then(|path| path.into_os_string().into_string().ok())
 }
 
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -305,10 +304,10 @@ async fn connection_manager(
                         biased;
                         maybe_cmd = cmd_rx.recv() => {
                             let Some(cmd) = maybe_cmd else { return; };
-                            if let Ok(json) = serde_json::to_string(&cmd) {
-                                if ws_tx.send(Message::Text(json.into())).await.is_err() {
-                                    break String::from("send failed");
-                                }
+                            if let Ok(json) = serde_json::to_string(&cmd)
+                                && ws_tx.send(Message::Text(json.into())).await.is_err()
+                            {
+                                break String::from("send failed");
                             }
                         }
                         maybe_msg = ws_rx.next() => {
@@ -413,10 +412,10 @@ async fn run_loop(
             _ = tokio::task::spawn_blocking(|| {
                 event::poll(Duration::from_millis(50)).unwrap_or(false)
             }) => {
-                if event::poll(Duration::from_millis(0))? {
-                    if let Event::Key(key) = event::read()? {
-                        handle_key(app, key, cmd_tx)?;
-                    }
+                if event::poll(Duration::from_millis(0))?
+                    && let Event::Key(key) = event::read()?
+                {
+                    handle_key(app, key, cmd_tx)?;
                 }
             }
         }
@@ -692,7 +691,8 @@ fn handle_key(
             cmd_tx.send(msg)?;
         }
         // If no cache entry existed, fall back to mode_model_preferences.
-        if !app.session_cache
+        if !app
+            .session_cache
             .get(app.session_id.as_deref().unwrap_or(""))
             .is_some_and(|modes| modes.contains_key(&app.agent_mode))
         {
@@ -1123,10 +1123,11 @@ fn handle_chat_key(
             }
         }
         KeyCode::Tab => {
-            if app.mention_state.is_some() && app.accept_selected_mention() {
-                if let Some(msg) = app.request_file_index_if_needed() {
-                    cmd_tx.send(msg)?;
-                }
+            if app.mention_state.is_some()
+                && app.accept_selected_mention()
+                && let Some(msg) = app.request_file_index_if_needed()
+            {
+                cmd_tx.send(msg)?;
             }
         }
         KeyCode::Char(c) => {
@@ -1329,9 +1330,7 @@ pub(crate) fn apply_sessions_key(
                     .session_id
                     .clone();
                 // Optimistic remove
-                app.session_groups[group_idx]
-                    .sessions
-                    .remove(session_idx);
+                app.session_groups[group_idx].sessions.remove(session_idx);
                 app.session_groups.retain(|g| !g.sessions.is_empty());
                 let new_len = app.visible_start_items().len();
                 if new_len > 0 && app.session_cursor >= new_len {
@@ -1875,7 +1874,7 @@ mod session_popup_key_tests {
     fn popup_char_appends_to_filter_and_resets_cursor() {
         let mut app = App::new();
         app.popup = Popup::SessionSelect;
-        app.session_groups = vec![make_group(Some("/a"), &["s1"] )];
+        app.session_groups = vec![make_group(Some("/a"), &["s1"])];
         app.session_cursor = 1;
         apply_popup_session_key(&mut app, KeyCode::Char('x'));
         assert_eq!(app.session_filter, "x");
@@ -1911,7 +1910,7 @@ mod session_popup_key_tests {
     fn popup_plain_n_still_filters_instead_of_creating_session() {
         let mut app = App::new();
         app.popup = Popup::SessionSelect;
-        app.session_groups = vec![make_group(Some("/a"), &["s1"] )];
+        app.session_groups = vec![make_group(Some("/a"), &["s1"])];
 
         let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
         handle_session_popup_key(
@@ -1939,7 +1938,12 @@ mod session_popup_key_tests {
             &tx,
         )
         .unwrap();
-        handle_key(&mut app, KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE), &tx).unwrap();
+        handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE),
+            &tx,
+        )
+        .unwrap();
 
         assert_eq!(app.popup, Popup::NewSession);
         assert_eq!(app.new_session_path, "/launch");
@@ -1956,8 +1960,12 @@ mod session_popup_key_tests {
         app.new_session_cursor = 0;
 
         let (tx, mut rx) = mpsc::unbounded_channel();
-        handle_new_session_popup_key(&mut app, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tx)
-            .unwrap();
+        handle_new_session_popup_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            &tx,
+        )
+        .unwrap();
 
         assert_eq!(app.popup, Popup::None);
         assert!(matches!(
@@ -1979,8 +1987,12 @@ mod session_popup_key_tests {
         app.new_session_cursor = app.new_session_path.len();
 
         let (tx, mut rx) = mpsc::unbounded_channel();
-        handle_new_session_popup_key(&mut app, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tx)
-            .unwrap();
+        handle_new_session_popup_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            &tx,
+        )
+        .unwrap();
 
         assert!(matches!(
             rx.try_recv(),
@@ -2005,8 +2017,12 @@ mod session_popup_key_tests {
         });
 
         let (tx, _rx) = mpsc::unbounded_channel();
-        handle_new_session_popup_key(&mut app, KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), &tx)
-            .unwrap();
+        handle_new_session_popup_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
+            &tx,
+        )
+        .unwrap();
 
         assert_eq!(app.new_session_path, "/launch/project/");
         assert!(app.new_session_completion.is_none());
@@ -2028,14 +2044,18 @@ mod session_popup_key_tests {
         });
 
         let (tx, mut rx) = mpsc::unbounded_channel();
-        handle_key(&mut app, KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), &tx).unwrap();
+        handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
+            &tx,
+        )
+        .unwrap();
 
         assert_eq!(app.new_session_path, "/launch/project/");
         assert!(app.new_session_completion.is_none());
         assert_eq!(app.agent_mode, "build");
         assert!(rx.try_recv().is_err());
     }
-
 
     #[test]
     fn popup_backspace_removes_last_filter_char_and_resets_cursor() {
@@ -2242,7 +2262,8 @@ mod reasoning_effort_integration_tests {
 
         let msgs: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
         assert!(
-            msgs.iter().any(|m| matches!(m, ClientMsg::SetSessionModel { .. })),
+            msgs.iter()
+                .any(|m| matches!(m, ClientMsg::SetSessionModel { .. })),
             "expected SetSessionModel: {msgs:?}"
         );
         assert!(
@@ -2276,7 +2297,9 @@ mod reasoning_effort_integration_tests {
         assert_eq!(app.current_model.as_deref(), Some("claude-sonnet"));
         let msgs: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
         assert!(
-            !msgs.iter().any(|m| matches!(m, ClientMsg::SetReasoningEffort { .. })),
+            !msgs
+                .iter()
+                .any(|m| matches!(m, ClientMsg::SetReasoningEffort { .. })),
             "no SetReasoningEffort expected: {msgs:?}"
         );
     }
@@ -2298,7 +2321,12 @@ mod reasoning_effort_integration_tests {
         app.models = vec![make_model("anthropic", "claude-opus")];
         app.model_cursor = 0;
 
-        handle_key(&mut app, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tx).unwrap();
+        handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            &tx,
+        )
+        .unwrap();
 
         // Effort dropped to auto
         assert_eq!(app.reasoning_effort, None);
@@ -2329,7 +2357,12 @@ mod reasoning_effort_integration_tests {
         app.models = vec![make_model("anthropic", "claude-opus")];
         app.model_cursor = 0;
 
-        handle_key(&mut app, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tx).unwrap();
+        handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            &tx,
+        )
+        .unwrap();
 
         let cms = &app.session_cache["s1"]["build"];
         assert_eq!(cms.model, "anthropic/claude-opus");
@@ -2351,11 +2384,18 @@ mod reasoning_effort_integration_tests {
         app.models = vec![make_model("anthropic", "claude-opus")];
         app.model_cursor = 0;
 
-        handle_key(&mut app, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tx).unwrap();
+        handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            &tx,
+        )
+        .unwrap();
 
         let msgs: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
         assert!(
-            !msgs.iter().any(|m| matches!(m, ClientMsg::SetReasoningEffort { .. })),
+            !msgs
+                .iter()
+                .any(|m| matches!(m, ClientMsg::SetReasoningEffort { .. })),
             "no SetReasoningEffort when already auto: {msgs:?}"
         );
     }

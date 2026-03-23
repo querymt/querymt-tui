@@ -323,32 +323,32 @@ impl ElicitationState {
     /// For SingleSelect: record the highlighted option as the field's value.
     pub fn select_current_option(&mut self) {
         let field = self.current_field();
-        if let ElicitationFieldKind::SingleSelect { options } = &field.kind {
-            if let Some(opt) = options.get(self.option_cursor) {
-                let name = field.name.clone();
-                let value = opt.value.clone();
-                self.selected.insert(name, value);
-            }
+        if let ElicitationFieldKind::SingleSelect { options } = &field.kind
+            && let Some(opt) = options.get(self.option_cursor)
+        {
+            let name = field.name.clone();
+            let value = opt.value.clone();
+            self.selected.insert(name, value);
         }
     }
 
     /// For MultiSelect: toggle the highlighted option in the field's array value.
     pub fn toggle_current_option(&mut self) {
         let field = self.current_field();
-        if let ElicitationFieldKind::MultiSelect { options } = &field.kind {
-            if let Some(opt) = options.get(self.option_cursor) {
-                let name = field.name.clone();
-                let val = opt.value.clone();
-                let arr = self
-                    .selected
-                    .entry(name)
-                    .or_insert_with(|| serde_json::Value::Array(Vec::new()));
-                if let serde_json::Value::Array(items) = arr {
-                    if let Some(pos) = items.iter().position(|v| v == &val) {
-                        items.remove(pos);
-                    } else {
-                        items.push(val);
-                    }
+        if let ElicitationFieldKind::MultiSelect { options } = &field.kind
+            && let Some(opt) = options.get(self.option_cursor)
+        {
+            let name = field.name.clone();
+            let val = opt.value.clone();
+            let arr = self
+                .selected
+                .entry(name)
+                .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+            if let serde_json::Value::Array(items) = arr {
+                if let Some(pos) = items.iter().position(|v| v == &val) {
+                    items.remove(pos);
+                } else {
+                    items.push(val);
                 }
             }
         }
@@ -899,7 +899,9 @@ impl App {
 
         // Trailing ShowMore for hidden groups (only when filter is inactive).
         if hidden_groups > 0 {
-            items.push(StartPageItem::ShowMore { remaining: hidden_groups });
+            items.push(StartPageItem::ShowMore {
+                remaining: hidden_groups,
+            });
         }
 
         items
@@ -979,8 +981,6 @@ impl App {
         items
     }
 
-
-
     /// Short display label for the current reasoning effort level.
     /// Matches the five values used in the web UI: auto / low / medium / high / max.
     pub fn reasoning_effort_label(&self) -> &str {
@@ -1022,16 +1022,13 @@ impl App {
             return;
         };
         let model_key = format!("{provider}/{model}");
-        self.session_cache
-            .entry(sid)
-            .or_default()
-            .insert(
-                self.agent_mode.clone(),
-                CachedModeState {
-                    model: model_key,
-                    effort: self.reasoning_effort.clone(),
-                },
-            );
+        self.session_cache.entry(sid).or_default().insert(
+            self.agent_mode.clone(),
+            CachedModeState {
+                model: model_key,
+                effort: self.reasoning_effort.clone(),
+            },
+        );
     }
 
     /// Look up the cached mode state for the current `session_id` +
@@ -1058,7 +1055,10 @@ impl App {
         let mut cmds = Vec::new();
 
         // Restore model if it differs from what the session currently has.
-        let current_model_key = match (self.current_provider.as_deref(), self.current_model.as_deref()) {
+        let current_model_key = match (
+            self.current_provider.as_deref(),
+            self.current_model.as_deref(),
+        ) {
             (Some(p), Some(m)) => format!("{p}/{m}"),
             _ => String::new(),
         };
@@ -1213,7 +1213,8 @@ impl App {
             for group in &self.session_groups {
                 for session in &group.sessions {
                     if session.session_id == active_session_id {
-                        if let Some(cwd) = session.cwd.as_ref().filter(|cwd| !cwd.trim().is_empty()) {
+                        if let Some(cwd) = session.cwd.as_ref().filter(|cwd| !cwd.trim().is_empty())
+                        {
                             return Some(cwd.clone());
                         }
                         if let Some(cwd) = group.cwd.as_ref().filter(|cwd| !cwd.trim().is_empty()) {
@@ -1248,10 +1249,10 @@ impl App {
         if input == "~" {
             return dirs::home_dir().unwrap_or_else(|| PathBuf::from(input));
         }
-        if let Some(rest) = input.strip_prefix("~/") {
-            if let Some(home) = dirs::home_dir() {
-                return home.join(rest);
-            }
+        if let Some(rest) = input.strip_prefix("~/")
+            && let Some(home) = dirs::home_dir()
+        {
+            return home.join(rest);
         }
         PathBuf::from(input)
     }
@@ -1307,10 +1308,15 @@ impl App {
         } else {
             let raw = PathBuf::from(typed);
             if raw.is_absolute() {
-                raw.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("/"))
+                raw.parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| PathBuf::from("/"))
             } else {
                 let joined = base_dir.join(raw);
-                joined.parent().map(Path::to_path_buf).unwrap_or(base_dir.clone())
+                joined
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or(base_dir.clone())
             }
         };
 
@@ -1373,7 +1379,11 @@ impl App {
                 .then_with(|| a.3.path.cmp(&b.3.path))
         });
 
-        scored.into_iter().take(6).map(|(_, _, _, entry)| entry).collect()
+        scored
+            .into_iter()
+            .take(6)
+            .map(|(_, _, _, entry)| entry)
+            .collect()
     }
 
     pub fn refresh_new_session_completion(&mut self) {
@@ -1393,7 +1403,8 @@ impl App {
                 completion.selected_index = 0;
                 return;
             }
-            let next = (completion.selected_index as isize + delta).rem_euclid(len as isize) as usize;
+            let next =
+                (completion.selected_index as isize + delta).rem_euclid(len as isize) as usize;
             completion.selected_index = next;
         }
     }
@@ -1479,98 +1490,98 @@ impl App {
     pub fn handle_server_msg(&mut self, raw: RawServerMsg) -> Vec<ClientMsg> {
         match raw.msg_type.as_str() {
             "state" => {
-                if let Some(data) = raw.data {
-                    if let Ok(state) = serde_json::from_value::<StateData>(data) {
-                        self.agent_id = state.agents.first().map(|a| a.id.clone());
-                        if let Some(mode) = state.agent_mode {
-                            self.agent_mode = mode;
-                        }
-                        // Only update reasoning_effort when the key was present in
-                        // the JSON; absent means the server didn't report it.
-                        match state.reasoning_effort {
-                            ReasoningEffortField::Absent => {}
-                            ReasoningEffortField::Auto => self.reasoning_effort = None,
-                            ReasoningEffortField::Set(s) => self.reasoning_effort = Some(s),
-                        }
-                        self.conn = ConnState::Connected;
-                        self.status = "connected".into();
+                if let Some(data) = raw.data
+                    && let Ok(state) = serde_json::from_value::<StateData>(data)
+                {
+                    self.agent_id = state.agents.first().map(|a| a.id.clone());
+                    if let Some(mode) = state.agent_mode {
+                        self.agent_mode = mode;
                     }
+                    // Only update reasoning_effort when the key was present in
+                    // the JSON; absent means the server didn't report it.
+                    match state.reasoning_effort {
+                        ReasoningEffortField::Absent => {}
+                        ReasoningEffortField::Auto => self.reasoning_effort = None,
+                        ReasoningEffortField::Set(s) => self.reasoning_effort = Some(s),
+                    }
+                    self.conn = ConnState::Connected;
+                    self.status = "connected".into();
                 }
                 vec![]
             }
             "reasoning_effort" => {
-                if let Some(data) = raw.data {
-                    if let Ok(re) = serde_json::from_value::<ReasoningEffortData>(data) {
-                        self.reasoning_effort = match re.reasoning_effort.as_deref() {
-                            None | Some("auto") => None,
-                            Some(s) => Some(s.to_string()),
-                        };
-                        // Server is authoritative — cache so this session + mode
-                        // remembers the level across restarts.
-                        self.cache_session_mode_state();
-                    }
+                if let Some(data) = raw.data
+                    && let Ok(re) = serde_json::from_value::<ReasoningEffortData>(data)
+                {
+                    self.reasoning_effort = match re.reasoning_effort.as_deref() {
+                        None | Some("auto") => None,
+                        Some(s) => Some(s.to_string()),
+                    };
+                    // Server is authoritative — cache so this session + mode
+                    // remembers the level across restarts.
+                    self.cache_session_mode_state();
                 }
                 vec![]
             }
             "agent_mode" => {
-                if let Some(data) = raw.data {
-                    if let Ok(am) = serde_json::from_value::<AgentModeData>(data) {
-                        self.agent_mode = am.mode;
-                    }
+                if let Some(data) = raw.data
+                    && let Ok(am) = serde_json::from_value::<AgentModeData>(data)
+                {
+                    self.agent_mode = am.mode;
                 }
                 vec![]
             }
             "file_index" => {
-                if let Some(data) = raw.data {
-                    if let Ok(fi) = serde_json::from_value::<FileIndexData>(data) {
-                        self.file_index = fi
-                            .files
-                            .into_iter()
-                            .map(|entry| FileIndexEntryLite {
-                                path: entry.path,
-                                is_dir: entry.is_dir,
-                            })
-                            .collect();
-                        self.file_index_generated_at = Some(fi.generated_at);
-                        self.file_index_loading = false;
-                        self.file_index_error = None;
-                        self.refresh_mention_state();
-                    }
+                if let Some(data) = raw.data
+                    && let Ok(fi) = serde_json::from_value::<FileIndexData>(data)
+                {
+                    self.file_index = fi
+                        .files
+                        .into_iter()
+                        .map(|entry| FileIndexEntryLite {
+                            path: entry.path,
+                            is_dir: entry.is_dir,
+                        })
+                        .collect();
+                    self.file_index_generated_at = Some(fi.generated_at);
+                    self.file_index_loading = false;
+                    self.file_index_error = None;
+                    self.refresh_mention_state();
                 }
                 vec![]
             }
             "undo_result" => {
                 self.pending_session_op = None;
                 self.is_thinking = false;
-                if let Some(data) = raw.data {
-                    if let Ok(ur) = serde_json::from_value::<UndoResultData>(data) {
-                        let message_id_for_files = ur
-                            .message_id
-                            .clone()
-                            .or_else(|| ur.undo_stack.last().map(|frame| frame.message_id.clone()));
-                        let next = self.build_undo_state_from_server_stack(
-                            &ur.undo_stack,
-                            message_id_for_files.as_deref(),
-                            if ur.success {
-                                Some(ur.reverted_files.as_slice())
-                            } else {
-                                None
-                            },
-                        );
-                        self.undo_state = next;
-
+                if let Some(data) = raw.data
+                    && let Ok(ur) = serde_json::from_value::<UndoResultData>(data)
+                {
+                    let message_id_for_files = ur
+                        .message_id
+                        .clone()
+                        .or_else(|| ur.undo_stack.last().map(|frame| frame.message_id.clone()));
+                    let next = self.build_undo_state_from_server_stack(
+                        &ur.undo_stack,
+                        message_id_for_files.as_deref(),
                         if ur.success {
-                            self.streaming_content.clear();
-                            self.streaming_cache.invalidate();
-                            self.status = "undone - reloading session".into();
-                            if let Some(ref sid) = self.session_id {
-                                return vec![ClientMsg::LoadSession {
-                                    session_id: sid.clone(),
-                                }];
-                            }
+                            Some(ur.reverted_files.as_slice())
                         } else {
-                            self.status = ur.message.unwrap_or_else(|| "undo failed".into());
+                            None
+                        },
+                    );
+                    self.undo_state = next;
+
+                    if ur.success {
+                        self.streaming_content.clear();
+                        self.streaming_cache.invalidate();
+                        self.status = "undone - reloading session".into();
+                        if let Some(ref sid) = self.session_id {
+                            return vec![ClientMsg::LoadSession {
+                                session_id: sid.clone(),
+                            }];
                         }
+                    } else {
+                        self.status = ur.message.unwrap_or_else(|| "undo failed".into());
                     }
                 }
                 vec![]
@@ -1578,81 +1589,83 @@ impl App {
             "redo_result" => {
                 self.pending_session_op = None;
                 self.is_thinking = false;
-                if let Some(data) = raw.data {
-                    if let Ok(rr) = serde_json::from_value::<RedoResultData>(data) {
-                        self.undo_state =
-                            self.build_undo_state_from_server_stack(&rr.undo_stack, None, None);
-                        if rr.success {
-                            self.status = "redone - reloading session".into();
-                            if let Some(ref sid) = self.session_id {
-                                return vec![ClientMsg::LoadSession {
-                                    session_id: sid.clone(),
-                                }];
-                            }
-                        } else {
-                            self.status = rr.message.unwrap_or_else(|| "redo failed".into());
+                if let Some(data) = raw.data
+                    && let Ok(rr) = serde_json::from_value::<RedoResultData>(data)
+                {
+                    self.undo_state =
+                        self.build_undo_state_from_server_stack(&rr.undo_stack, None, None);
+                    if rr.success {
+                        self.status = "redone - reloading session".into();
+                        if let Some(ref sid) = self.session_id {
+                            return vec![ClientMsg::LoadSession {
+                                session_id: sid.clone(),
+                            }];
                         }
+                    } else {
+                        self.status = rr.message.unwrap_or_else(|| "redo failed".into());
                     }
                 }
                 vec![]
             }
             "session_list" => {
-                if let Some(data) = raw.data {
-                    if let Ok(list) = serde_json::from_value::<SessionListData>(data) {
-                        // Sort sessions within each group by updated_at descending.
-                        let mut groups = list.groups;
-                        for group in &mut groups {
-                            group.sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-                        }
-                        // Sort groups by their most-recent session activity descending.
-                        groups.sort_by(|a, b| {
-                            let a_latest = a.sessions.first().and_then(|s| s.updated_at.as_deref());
-                            let b_latest = b.sessions.first().and_then(|s| s.updated_at.as_deref());
-                            b_latest.cmp(&a_latest)
-                        });
-
-                        let total: usize = groups.iter().map(|g| g.sessions.len()).sum();
-                        self.session_groups = groups;
-
-                        // Clamp cursor to the new visible item count.
-                        let visible_len = self.visible_start_items().len();
-                        if self.session_cursor >= visible_len && visible_len > 0 {
-                            self.session_cursor = visible_len - 1;
-                        }
-                        self.status = format!("{} session(s)", total);
+                if let Some(data) = raw.data
+                    && let Ok(list) = serde_json::from_value::<SessionListData>(data)
+                {
+                    // Sort sessions within each group by updated_at descending.
+                    let mut groups = list.groups;
+                    for group in &mut groups {
+                        group
+                            .sessions
+                            .sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
                     }
+                    // Sort groups by their most-recent session activity descending.
+                    groups.sort_by(|a, b| {
+                        let a_latest = a.sessions.first().and_then(|s| s.updated_at.as_deref());
+                        let b_latest = b.sessions.first().and_then(|s| s.updated_at.as_deref());
+                        b_latest.cmp(&a_latest)
+                    });
+
+                    let total: usize = groups.iter().map(|g| g.sessions.len()).sum();
+                    self.session_groups = groups;
+
+                    // Clamp cursor to the new visible item count.
+                    let visible_len = self.visible_start_items().len();
+                    if self.session_cursor >= visible_len && visible_len > 0 {
+                        self.session_cursor = visible_len - 1;
+                    }
+                    self.status = format!("{} session(s)", total);
                 }
                 vec![]
             }
             "session_created" => {
-                if let Some(data) = raw.data {
-                    if let Ok(sc) = serde_json::from_value::<SessionCreatedData>(data) {
-                        self.session_id = Some(sc.session_id.clone());
-                        self.agent_id = Some(sc.agent_id);
-                        self.messages.clear();
-                        self.streaming_content.clear();
-                        self.streaming_cache.invalidate();
-                        self.scroll_offset = 0;
-                        self.undo_state = None;
-                        self.undoable_turns.clear();
-                        self.file_index.clear();
-                        self.file_index_generated_at = None;
-                        self.file_index_loading = false;
-                        self.file_index_error = None;
-                        self.mention_state = None;
-                        self.live_compaction = None;
-                        self.last_compaction_token_estimate = None;
-                        self.elicitation = None;
-                        self.clear_cancel_confirm();
-                        self.cumulative_cost = None;
-                        self.session_stats = SessionStatsLite::default();
-                        self.screen = Screen::Chat;
-                        self.status = "session created".into();
-                        return vec![ClientMsg::SubscribeSession {
-                            session_id: sc.session_id,
-                            agent_id: self.agent_id.clone(),
-                        }];
-                    }
+                if let Some(data) = raw.data
+                    && let Ok(sc) = serde_json::from_value::<SessionCreatedData>(data)
+                {
+                    self.session_id = Some(sc.session_id.clone());
+                    self.agent_id = Some(sc.agent_id);
+                    self.messages.clear();
+                    self.streaming_content.clear();
+                    self.streaming_cache.invalidate();
+                    self.scroll_offset = 0;
+                    self.undo_state = None;
+                    self.undoable_turns.clear();
+                    self.file_index.clear();
+                    self.file_index_generated_at = None;
+                    self.file_index_loading = false;
+                    self.file_index_error = None;
+                    self.mention_state = None;
+                    self.live_compaction = None;
+                    self.last_compaction_token_estimate = None;
+                    self.elicitation = None;
+                    self.clear_cancel_confirm();
+                    self.cumulative_cost = None;
+                    self.session_stats = SessionStatsLite::default();
+                    self.screen = Screen::Chat;
+                    self.status = "session created".into();
+                    return vec![ClientMsg::SubscribeSession {
+                        session_id: sc.session_id,
+                        agent_id: self.agent_id.clone(),
+                    }];
                 }
                 vec![]
             }
@@ -1706,43 +1719,43 @@ impl App {
                 vec![]
             }
             "session_events" => {
-                if let Some(data) = raw.data {
-                    if let Ok(se) = serde_json::from_value::<SessionEventsData>(data) {
-                        self.note_session_activity(&se.session_id);
-                        if self.session_id.as_deref() == Some(se.session_id.as_str()) {
-                            for envelope in se.events {
-                                self.handle_event(&envelope);
-                            }
+                if let Some(data) = raw.data
+                    && let Ok(se) = serde_json::from_value::<SessionEventsData>(data)
+                {
+                    self.note_session_activity(&se.session_id);
+                    if self.session_id.as_deref() == Some(se.session_id.as_str()) {
+                        for envelope in se.events {
+                            self.handle_event(&envelope);
                         }
                     }
                 }
                 vec![]
             }
             "event" => {
-                if let Some(data) = raw.data {
-                    if let Ok(ed) = serde_json::from_value::<EventData>(data) {
-                        self.note_session_activity(&ed.session_id);
-                        if self.session_id.as_deref() == Some(ed.session_id.as_str()) {
-                            self.handle_event(&ed.event);
-                        }
+                if let Some(data) = raw.data
+                    && let Ok(ed) = serde_json::from_value::<EventData>(data)
+                {
+                    self.note_session_activity(&ed.session_id);
+                    if self.session_id.as_deref() == Some(ed.session_id.as_str()) {
+                        self.handle_event(&ed.event);
                     }
                 }
                 vec![]
             }
             "all_models_list" => {
-                if let Some(data) = raw.data {
-                    if let Ok(ml) = serde_json::from_value::<AllModelsData>(data) {
-                        self.models = ml.models;
-                    }
+                if let Some(data) = raw.data
+                    && let Ok(ml) = serde_json::from_value::<AllModelsData>(data)
+                {
+                    self.models = ml.models;
                 }
                 vec![]
             }
             "error" => {
-                if let Some(data) = raw.data {
-                    if let Ok(e) = serde_json::from_value::<ErrorData>(data) {
-                        self.messages.push(ChatEntry::Error(e.message.clone()));
-                        self.status = format!("error: {}", e.message);
-                    }
+                if let Some(data) = raw.data
+                    && let Ok(e) = serde_json::from_value::<ErrorData>(data)
+                {
+                    self.messages.push(ChatEntry::Error(e.message.clone()));
+                    self.status = format!("error: {}", e.message);
                 }
                 vec![]
             }
@@ -1887,10 +1900,8 @@ impl App {
                 result,
             } => {
                 if tool_name == "question" {
-                    if is_replay {
-                        if let Some(result_str) = result {
-                            backfill_elicitation_outcomes(&mut self.messages, result_str);
-                        }
+                    if is_replay && let Some(result_str) = result {
+                        backfill_elicitation_outcomes(&mut self.messages, result_str);
                     }
                 } else {
                     if let Some(result_str) = result {
@@ -2004,8 +2015,8 @@ impl App {
                 .and_then(|state| state.frontier_message_id.as_deref());
             let mut replay_cutoff = events.len();
 
-            if let Some(frontier_message_id) = frontier_message_id {
-                if let Some(idx) = events.iter().position(|event_val| {
+            if let Some(frontier_message_id) = frontier_message_id
+                && let Some(idx) = events.iter().position(|event_val| {
                     serde_json::from_value::<AgentEvent>(event_val.clone())
                         .ok()
                         .and_then(|event| match event.kind {
@@ -2016,9 +2027,9 @@ impl App {
                             _ => None,
                         })
                         .unwrap_or(false)
-                }) {
-                    replay_cutoff = idx;
-                }
+                })
+            {
+                replay_cutoff = idx;
             }
 
             for event_val in events.iter().take(replay_cutoff) {
@@ -2278,14 +2289,13 @@ impl App {
             .and_then(|state| state.frontier_message_id.as_deref());
 
         let mut start_index = self.undoable_turns.len();
-        if let Some(frontier_message_id) = frontier_message_id {
-            if let Some(frontier_index) = self
+        if let Some(frontier_message_id) = frontier_message_id
+            && let Some(frontier_index) = self
                 .undoable_turns
                 .iter()
                 .position(|turn| turn.message_id == frontier_message_id)
-            {
-                start_index = frontier_index;
-            }
+        {
+            start_index = frontier_index;
         }
 
         self.undoable_turns[..start_index]
@@ -2399,11 +2409,10 @@ impl App {
                 outcome: out,
                 ..
             } = entry
+                && eid == elicitation_id
             {
-                if eid == elicitation_id {
-                    *out = Some(outcome.to_string());
-                    break;
-                }
+                *out = Some(outcome.to_string());
+                break;
             }
         }
         self.elicitation = None;
@@ -2834,13 +2843,22 @@ mod reasoning_effort_tests {
                 has_children: false,
             }],
         }];
-        assert_eq!(app.resolve_new_session_default_cwd().as_deref(), Some("/session"));
+        assert_eq!(
+            app.resolve_new_session_default_cwd().as_deref(),
+            Some("/session")
+        );
 
         app.session_groups[0].sessions[0].cwd = None;
-        assert_eq!(app.resolve_new_session_default_cwd().as_deref(), Some("/group"));
+        assert_eq!(
+            app.resolve_new_session_default_cwd().as_deref(),
+            Some("/group")
+        );
 
         app.session_groups.clear();
-        assert_eq!(app.resolve_new_session_default_cwd().as_deref(), Some("/launch"));
+        assert_eq!(
+            app.resolve_new_session_default_cwd().as_deref(),
+            Some("/launch")
+        );
     }
 
     #[test]
@@ -2865,11 +2883,13 @@ mod reasoning_effort_tests {
             Some("/launch/base/proj/subdir")
         );
         assert_eq!(
-            app.normalize_new_session_path("../proj/./subdir/..",).as_deref(),
+            app.normalize_new_session_path("../proj/./subdir/..",)
+                .as_deref(),
             Some("/launch/proj")
         );
         assert_eq!(
-            app.normalize_new_session_path("/absolute/path/../clean").as_deref(),
+            app.normalize_new_session_path("/absolute/path/../clean")
+                .as_deref(),
             Some("/absolute/clean")
         );
     }
@@ -2919,8 +2939,16 @@ mod reasoning_effort_tests {
         let results = app.rank_path_completion_matches("project");
 
         assert!(results.iter().all(|entry| entry.is_dir));
-        assert!(results.iter().any(|entry| entry.path.ends_with("project-dir")));
-        assert!(!results.iter().any(|entry| entry.path.ends_with("project-file.txt")));
+        assert!(
+            results
+                .iter()
+                .any(|entry| entry.path.ends_with("project-dir"))
+        );
+        assert!(
+            !results
+                .iter()
+                .any(|entry| entry.path.ends_with("project-file.txt"))
+        );
     }
 }
 
@@ -3030,7 +3058,10 @@ mod session_cache_tests {
         app.reasoning_effort = Some("low".into());
         app.cache_session_mode_state();
 
-        assert_eq!(app.session_cache["s1"]["build"].model, "anthropic/claude-sonnet");
+        assert_eq!(
+            app.session_cache["s1"]["build"].model,
+            "anthropic/claude-sonnet"
+        );
         assert_eq!(app.session_cache["s1"]["build"].effort, Some("high".into()));
         assert_eq!(app.session_cache["s1"]["plan"].model, "openai/gpt-4o");
         assert_eq!(app.session_cache["s1"]["plan"].effort, Some("low".into()));
@@ -3062,13 +3093,18 @@ mod session_cache_tests {
 
         app.session_cache.entry("s1".into()).or_default().insert(
             "build".into(),
-            CachedModeState { model: "anthropic/claude-sonnet".into(), effort: Some("high".into()) },
+            CachedModeState {
+                model: "anthropic/claude-sonnet".into(),
+                effort: Some("high".into()),
+            },
         );
 
         let cmds = app.apply_cached_mode_state();
         assert_eq!(app.reasoning_effort, Some("high".into()));
         assert_eq!(cmds.len(), 1);
-        assert!(matches!(&cmds[0], ClientMsg::SetReasoningEffort { reasoning_effort } if reasoning_effort == "high"));
+        assert!(
+            matches!(&cmds[0], ClientMsg::SetReasoningEffort { reasoning_effort } if reasoning_effort == "high")
+        );
     }
 
     #[test]
@@ -3079,7 +3115,10 @@ mod session_cache_tests {
         // The cached state says build mode used opus with max effort
         app.session_cache.entry("s1".into()).or_default().insert(
             "build".into(),
-            CachedModeState { model: "anthropic/claude-opus".into(), effort: Some("max".into()) },
+            CachedModeState {
+                model: "anthropic/claude-opus".into(),
+                effort: Some("max".into()),
+            },
         );
         // Need the model in the models list for the lookup
         app.models = vec![make_model_entry("anthropic", "claude-opus")];
@@ -3091,7 +3130,9 @@ mod session_cache_tests {
         assert_eq!(app.reasoning_effort, Some("max".into()));
         assert_eq!(cmds.len(), 2);
         assert!(matches!(&cmds[0], ClientMsg::SetSessionModel { .. }));
-        assert!(matches!(&cmds[1], ClientMsg::SetReasoningEffort { reasoning_effort } if reasoning_effort == "max"));
+        assert!(
+            matches!(&cmds[1], ClientMsg::SetReasoningEffort { reasoning_effort } if reasoning_effort == "max")
+        );
     }
 
     #[test]
@@ -3114,7 +3155,10 @@ mod session_cache_tests {
 
         app.session_cache.entry("s1".into()).or_default().insert(
             "build".into(),
-            CachedModeState { model: "anthropic/claude-sonnet".into(), effort: Some("high".into()) },
+            CachedModeState {
+                model: "anthropic/claude-sonnet".into(),
+                effort: Some("high".into()),
+            },
         );
 
         let cmds = app.apply_cached_mode_state();
@@ -3142,7 +3186,10 @@ mod session_cache_tests {
 
         app.session_cache.entry("s1".into()).or_default().insert(
             "build".into(),
-            CachedModeState { model: "anthropic/claude-opus".into(), effort: Some("max".into()) },
+            CachedModeState {
+                model: "anthropic/claude-opus".into(),
+                effort: Some("max".into()),
+            },
         );
         // models list is empty — can't resolve opus
         app.models = vec![];
@@ -3225,7 +3272,12 @@ mod session_mode_tests {
     fn live_session_mode_changed_updates_agent_mode() {
         let mut app = App::new();
         app.agent_mode = "build".into();
-        app.handle_event_kind(&EventKind::SessionModeChanged { mode: "plan".into() }, false);
+        app.handle_event_kind(
+            &EventKind::SessionModeChanged {
+                mode: "plan".into(),
+            },
+            false,
+        );
         assert_eq!(app.agent_mode, "plan");
     }
 
@@ -3233,7 +3285,12 @@ mod session_mode_tests {
     fn live_session_mode_changed_to_build_updates_agent_mode() {
         let mut app = App::new();
         app.agent_mode = "plan".into();
-        app.handle_event_kind(&EventKind::SessionModeChanged { mode: "build".into() }, false);
+        app.handle_event_kind(
+            &EventKind::SessionModeChanged {
+                mode: "build".into(),
+            },
+            false,
+        );
         assert_eq!(app.agent_mode, "build");
     }
 
@@ -3363,7 +3420,8 @@ mod session_mode_tests {
 
         // Cache wins: model switched to opus
         assert!(
-            cmds.iter().any(|m| matches!(m, ClientMsg::SetSessionModel { .. })),
+            cmds.iter()
+                .any(|m| matches!(m, ClientMsg::SetSessionModel { .. })),
             "expected SetSessionModel in {cmds:?}"
         );
         assert_eq!(app.current_model.as_deref(), Some("claude-opus"));
@@ -3381,11 +3439,15 @@ mod session_mode_tests {
         let cmds = app.handle_server_msg(make_session_loaded(audit));
         // Only SetAgentMode, no SetReasoningEffort or SetSessionModel
         assert!(
-            !cmds.iter().any(|m| matches!(m, ClientMsg::SetReasoningEffort { .. })),
+            !cmds
+                .iter()
+                .any(|m| matches!(m, ClientMsg::SetReasoningEffort { .. })),
             "expected no SetReasoningEffort: {cmds:?}"
         );
         assert!(
-            !cmds.iter().any(|m| matches!(m, ClientMsg::SetSessionModel { .. })),
+            !cmds
+                .iter()
+                .any(|m| matches!(m, ClientMsg::SetSessionModel { .. })),
             "expected no SetSessionModel: {cmds:?}"
         );
     }
@@ -4529,7 +4591,13 @@ mod start_page_tests {
         let items = app.visible_start_items();
         // only the header
         assert_eq!(items.len(), 1);
-        assert!(matches!(&items[0], StartPageItem::GroupHeader { collapsed: true, .. }));
+        assert!(matches!(
+            &items[0],
+            StartPageItem::GroupHeader {
+                collapsed: true,
+                ..
+            }
+        ));
     }
 
     // ── visible_start_items: multiple groups ─────────────────────────────────
@@ -4563,8 +4631,20 @@ mod start_page_tests {
         // /a collapsed: 1 header
         // /b expanded:  1 header + 2 sessions
         assert_eq!(items.len(), 4);
-        assert!(matches!(&items[0], StartPageItem::GroupHeader { collapsed: true, .. }));
-        assert!(matches!(&items[1], StartPageItem::GroupHeader { collapsed: false, .. }));
+        assert!(matches!(
+            &items[0],
+            StartPageItem::GroupHeader {
+                collapsed: true,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &items[1],
+            StartPageItem::GroupHeader {
+                collapsed: false,
+                ..
+            }
+        ));
     }
 
     // ── visible_start_items: filter hides non-matching sessions ──────────────
@@ -4621,9 +4701,27 @@ mod start_page_tests {
         // items[2]: Session group_idx=0, session_idx=1
         // items[3]: GroupHeader /b
         // items[4]: Session group_idx=1, session_idx=0
-        assert!(matches!(&items[1], StartPageItem::Session { group_idx: 0, session_idx: 0 }));
-        assert!(matches!(&items[2], StartPageItem::Session { group_idx: 0, session_idx: 1 }));
-        assert!(matches!(&items[4], StartPageItem::Session { group_idx: 1, session_idx: 0 }));
+        assert!(matches!(
+            &items[1],
+            StartPageItem::Session {
+                group_idx: 0,
+                session_idx: 0
+            }
+        ));
+        assert!(matches!(
+            &items[2],
+            StartPageItem::Session {
+                group_idx: 0,
+                session_idx: 1
+            }
+        ));
+        assert!(matches!(
+            &items[4],
+            StartPageItem::Session {
+                group_idx: 1,
+                session_idx: 0
+            }
+        ));
     }
 
     // ── session_list message preserves group structure ────────────────────────
@@ -4646,7 +4744,10 @@ mod start_page_tests {
         });
 
         assert_eq!(app.session_groups.len(), 1);
-        assert_eq!(app.session_groups[0].cwd.as_deref(), Some("/home/user/proj"));
+        assert_eq!(
+            app.session_groups[0].cwd.as_deref(),
+            Some("/home/user/proj")
+        );
         assert_eq!(app.session_groups[0].sessions.len(), 1);
         assert_eq!(app.session_groups[0].sessions[0].session_id, "s1");
     }
@@ -4668,10 +4769,7 @@ mod start_page_tests {
     #[test]
     fn filtered_sessions_applies_filter() {
         let mut app = App::new();
-        app.session_groups = vec![make_group(
-            Some("/a"),
-            &[("aaa", None), ("bbb", None)],
-        )];
+        app.session_groups = vec![make_group(Some("/a"), &[("aaa", None), ("bbb", None)])];
         app.session_filter = "aaa".to_string();
 
         let flat = app.filtered_sessions();
@@ -4692,7 +4790,10 @@ mod start_page_tests {
         let items = app.visible_start_items();
         assert!(matches!(
             &items[0],
-            StartPageItem::GroupHeader { session_count: 3, .. }
+            StartPageItem::GroupHeader {
+                session_count: 3,
+                ..
+            }
         ));
     }
 
@@ -4726,50 +4827,80 @@ mod start_page_tests {
     #[test]
     fn visible_items_group_with_three_sessions_shows_no_show_more() {
         let mut app = App::new();
-        app.session_groups = vec![make_group(Some("/a"), &[
-            ("s1", None), ("s2", None), ("s3", None),
-        ])];
+        app.session_groups = vec![make_group(
+            Some("/a"),
+            &[("s1", None), ("s2", None), ("s3", None)],
+        )];
         let items = app.visible_start_items();
         // header + 3 sessions, no ShowMore
         assert_eq!(items.len(), 4);
-        assert!(!items.iter().any(|i| matches!(i, StartPageItem::ShowMore { .. })));
+        assert!(
+            !items
+                .iter()
+                .any(|i| matches!(i, StartPageItem::ShowMore { .. }))
+        );
     }
 
     #[test]
     fn visible_items_group_with_four_sessions_caps_at_three_plus_show_more() {
         let mut app = App::new();
-        app.session_groups = vec![make_group(Some("/a"), &[
-            ("s1", None), ("s2", None), ("s3", None), ("s4", None),
-        ])];
+        app.session_groups = vec![make_group(
+            Some("/a"),
+            &[("s1", None), ("s2", None), ("s3", None), ("s4", None)],
+        )];
         let items = app.visible_start_items();
         // header + 3 sessions + ShowMore
         assert_eq!(items.len(), 5);
-        assert!(matches!(items[4], StartPageItem::ShowMore { remaining: 1, .. }));
+        assert!(matches!(
+            items[4],
+            StartPageItem::ShowMore { remaining: 1, .. }
+        ));
     }
 
     #[test]
     fn visible_items_show_more_remaining_is_total_minus_three() {
         let mut app = App::new();
         // 7 sessions → show 3 + ShowMore(remaining=4)
-        app.session_groups = vec![make_group(Some("/a"), &[
-            ("s1", None), ("s2", None), ("s3", None),
-            ("s4", None), ("s5", None), ("s6", None), ("s7", None),
-        ])];
+        app.session_groups = vec![make_group(
+            Some("/a"),
+            &[
+                ("s1", None),
+                ("s2", None),
+                ("s3", None),
+                ("s4", None),
+                ("s5", None),
+                ("s6", None),
+                ("s7", None),
+            ],
+        )];
         let items = app.visible_start_items();
-        assert!(matches!(items.last(), Some(StartPageItem::ShowMore { remaining: 4, .. })));
+        assert!(matches!(
+            items.last(),
+            Some(StartPageItem::ShowMore { remaining: 4, .. })
+        ));
     }
 
     #[test]
     fn visible_items_filter_active_bypasses_cap() {
         let mut app = App::new();
-        app.session_groups = vec![make_group(Some("/a"), &[
-            ("aaa1", None), ("aaa2", None), ("aaa3", None), ("aaa4", None),
-        ])];
+        app.session_groups = vec![make_group(
+            Some("/a"),
+            &[
+                ("aaa1", None),
+                ("aaa2", None),
+                ("aaa3", None),
+                ("aaa4", None),
+            ],
+        )];
         app.session_filter = "aaa".to_string();
         let items = app.visible_start_items();
         // All 4 match the filter → header + 4 sessions, no ShowMore
         assert_eq!(items.len(), 5);
-        assert!(!items.iter().any(|i| matches!(i, StartPageItem::ShowMore { .. })));
+        assert!(
+            !items
+                .iter()
+                .any(|i| matches!(i, StartPageItem::ShowMore { .. }))
+        );
     }
 
     // ── MAX_VISIBLE_GROUPS cap ────────────────────────────────────────────────
@@ -4785,7 +4916,11 @@ mod start_page_tests {
         let items = app.visible_start_items();
         // 3 headers + 3 sessions = 6, no trailing ShowMore
         assert_eq!(items.len(), 6);
-        assert!(!items.iter().any(|i| matches!(i, StartPageItem::ShowMore { .. })));
+        assert!(
+            !items
+                .iter()
+                .any(|i| matches!(i, StartPageItem::ShowMore { .. }))
+        );
     }
 
     #[test]
@@ -4800,7 +4935,10 @@ mod start_page_tests {
         let items = app.visible_start_items();
         // 3 groups (3 headers + 3 sessions) + 1 trailing ShowMore = 7
         assert_eq!(items.len(), 7);
-        assert!(matches!(items.last(), Some(StartPageItem::ShowMore { remaining: 1 })));
+        assert!(matches!(
+            items.last(),
+            Some(StartPageItem::ShowMore { remaining: 1 })
+        ));
     }
 
     #[test]
@@ -4816,7 +4954,10 @@ mod start_page_tests {
         ];
         let items = app.visible_start_items();
         // 3 shown groups + 1 trailing ShowMore(remaining=3)
-        assert!(matches!(items.last(), Some(StartPageItem::ShowMore { remaining: 3 })));
+        assert!(matches!(
+            items.last(),
+            Some(StartPageItem::ShowMore { remaining: 3 })
+        ));
     }
 
     #[test]
@@ -4831,11 +4972,17 @@ mod start_page_tests {
         app.session_filter = "aaa".to_string();
         let items = app.visible_start_items();
         // Filter active → all 4 groups shown, no trailing ShowMore
-        let headers = items.iter().filter(|i| matches!(i, StartPageItem::GroupHeader { .. })).count();
+        let headers = items
+            .iter()
+            .filter(|i| matches!(i, StartPageItem::GroupHeader { .. }))
+            .count();
         assert_eq!(headers, 4);
-        assert!(!items.iter().any(|i| matches!(i, StartPageItem::ShowMore { .. })));
+        assert!(
+            !items
+                .iter()
+                .any(|i| matches!(i, StartPageItem::ShowMore { .. }))
+        );
     }
-
 }
 
 // ── popup_item_tests ──────────────────────────────────────────────────────────
@@ -4897,7 +5044,11 @@ mod popup_item_tests {
         // 1 header + 10 sessions = 11
         assert_eq!(items.len(), 11);
         // No ShowMore items
-        assert!(!items.iter().any(|i| matches!(i, PopupItem::GroupHeader { .. } if false)));
+        assert!(
+            !items
+                .iter()
+                .any(|i| matches!(i, PopupItem::GroupHeader { .. } if false))
+        );
     }
 
     // ── no MAX_VISIBLE_GROUPS cap ─────────────────────────────────────────────
@@ -4913,7 +5064,10 @@ mod popup_item_tests {
             make_group(Some("/e"), &["s5"]),
         ];
         let items = app.visible_popup_items();
-        let headers = items.iter().filter(|i| matches!(i, PopupItem::GroupHeader { .. })).count();
+        let headers = items
+            .iter()
+            .filter(|i| matches!(i, PopupItem::GroupHeader { .. }))
+            .count();
         // All 5 groups shown (start page would cap at MAX_VISIBLE_GROUPS=3)
         assert_eq!(headers, 5);
     }
@@ -4940,7 +5094,13 @@ mod popup_item_tests {
         let items = app.visible_popup_items();
         // Only the header visible
         assert_eq!(items.len(), 1);
-        assert!(matches!(&items[0], PopupItem::GroupHeader { collapsed: true, .. }));
+        assert!(matches!(
+            &items[0],
+            PopupItem::GroupHeader {
+                collapsed: true,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -4950,7 +5110,13 @@ mod popup_item_tests {
         // Not in popup_collapsed_groups → expanded
         let items = app.visible_popup_items();
         assert_eq!(items.len(), 2);
-        assert!(matches!(&items[0], PopupItem::GroupHeader { collapsed: false, .. }));
+        assert!(matches!(
+            &items[0],
+            PopupItem::GroupHeader {
+                collapsed: false,
+                ..
+            }
+        ));
     }
 
     // ── multiple groups, mixed collapse ───────────────────────────────────────
@@ -4978,8 +5144,20 @@ mod popup_item_tests {
         let items = app.visible_popup_items();
         // /a collapsed: 1 header; /b expanded: 1 header + 2 sessions = 4
         assert_eq!(items.len(), 4);
-        assert!(matches!(&items[0], PopupItem::GroupHeader { collapsed: true, .. }));
-        assert!(matches!(&items[1], PopupItem::GroupHeader { collapsed: false, .. }));
+        assert!(matches!(
+            &items[0],
+            PopupItem::GroupHeader {
+                collapsed: true,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &items[1],
+            PopupItem::GroupHeader {
+                collapsed: false,
+                ..
+            }
+        ));
     }
 
     // ── filter hides non-matching sessions ────────────────────────────────────
@@ -4987,10 +5165,7 @@ mod popup_item_tests {
     #[test]
     fn popup_filter_hides_non_matching_sessions() {
         let mut app = App::new();
-        app.session_groups = vec![make_group(
-            Some("/a"),
-            &["aaa", "bbb", "aab"],
-        )];
+        app.session_groups = vec![make_group(Some("/a"), &["aaa", "bbb", "aab"])];
         app.session_filter = "aa".to_string();
         let items = app.visible_popup_items();
         // header + "aaa" + "aab" (bbb filtered out by session_id)
@@ -5030,9 +5205,27 @@ mod popup_item_tests {
         // items[2]: Session group_idx=0, session_idx=1
         // items[3]: GroupHeader /b
         // items[4]: Session group_idx=1, session_idx=0
-        assert!(matches!(&items[1], PopupItem::Session { group_idx: 0, session_idx: 0 }));
-        assert!(matches!(&items[2], PopupItem::Session { group_idx: 0, session_idx: 1 }));
-        assert!(matches!(&items[4], PopupItem::Session { group_idx: 1, session_idx: 0 }));
+        assert!(matches!(
+            &items[1],
+            PopupItem::Session {
+                group_idx: 0,
+                session_idx: 0
+            }
+        ));
+        assert!(matches!(
+            &items[2],
+            PopupItem::Session {
+                group_idx: 0,
+                session_idx: 1
+            }
+        ));
+        assert!(matches!(
+            &items[4],
+            PopupItem::Session {
+                group_idx: 1,
+                session_idx: 0
+            }
+        ));
     }
 
     // ── group header carries correct session_count ────────────────────────────
@@ -5044,7 +5237,10 @@ mod popup_item_tests {
         let items = app.visible_popup_items();
         assert!(matches!(
             &items[0],
-            PopupItem::GroupHeader { session_count: 3, .. }
+            PopupItem::GroupHeader {
+                session_count: 3,
+                ..
+            }
         ));
     }
 
@@ -5089,7 +5285,7 @@ mod popup_item_tests {
 /// Cards are matched to answer entries in document order — the same order the
 /// server asked the questions.  Cards whose outcome is already something other
 /// than `"responded"` are skipped (they were resolved in a previous backfill).
-fn backfill_elicitation_outcomes(messages: &mut Vec<ChatEntry>, result_str: &str) {
+fn backfill_elicitation_outcomes(messages: &mut [ChatEntry], result_str: &str) {
     let Ok(val) = serde_json::from_str::<serde_json::Value>(result_str) else {
         return;
     };
@@ -5341,22 +5537,22 @@ fn update_tool_detail(messages: &mut [ChatEntry], tool_call_id: Option<&str>, re
                     .map(|n| n as usize);
             }
             // shell tool: show last 3 lines of stdout below command
-            if name.starts_with("shell") {
-                if let Some(stdout) = obj.get("stdout").and_then(|v| v.as_str()) {
-                    let tail: Vec<&str> = stdout
-                        .lines()
-                        .rev()
-                        .filter(|l| !l.trim().is_empty())
-                        .take(3)
-                        .collect();
-                    if !tail.is_empty() {
-                        let tail_str = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
-                        if let ToolDetail::Summary(header) = detail {
-                            *detail = ToolDetail::SummaryWithOutput {
-                                header: std::mem::take(header),
-                                output: tail_str,
-                            };
-                        }
+            if name.starts_with("shell")
+                && let Some(stdout) = obj.get("stdout").and_then(|v| v.as_str())
+            {
+                let tail: Vec<&str> = stdout
+                    .lines()
+                    .rev()
+                    .filter(|l| !l.trim().is_empty())
+                    .take(3)
+                    .collect();
+                if !tail.is_empty() {
+                    let tail_str = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
+                    if let ToolDetail::Summary(header) = detail {
+                        *detail = ToolDetail::SummaryWithOutput {
+                            header: std::mem::take(header),
+                            output: tail_str,
+                        };
                     }
                 }
             }

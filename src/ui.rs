@@ -809,7 +809,7 @@ fn draw_chat(f: &mut Frame, app: &mut App) {
     let wrapped_lines = if input_inner_width == 0 {
         1
     } else {
-        ((total_display_width.max(1) + input_inner_width - 1) / input_inner_width) as u16
+        total_display_width.max(1).div_ceil(input_inner_width) as u16
     };
     let max_input_lines: u16 = 5;
     let input_height = wrapped_lines.clamp(1, max_input_lines) + 1; // +1 bottom padding
@@ -860,14 +860,15 @@ fn draw_chat(f: &mut Frame, app: &mut App) {
     }
 
     // context %
-    if let Some(context_tokens) = app.session_stats.latest_context_tokens {
-        if context_tokens > 0 && app.context_limit > 0 {
-            let pct = (context_tokens as f64 / app.context_limit as f64 * 100.0) as u32;
-            right_spans.push(Span::styled(
-                format!(" {ICON_CONTEXT} {pct}% "),
-                Theme::status(),
-            ));
-        }
+    if let Some(context_tokens) = app.session_stats.latest_context_tokens
+        && context_tokens > 0
+        && app.context_limit > 0
+    {
+        let pct = (context_tokens as f64 / app.context_limit as f64 * 100.0) as u32;
+        right_spans.push(Span::styled(
+            format!(" {ICON_CONTEXT} {pct}% "),
+            Theme::status(),
+        ));
     }
 
     // tool calls
@@ -879,13 +880,13 @@ fn draw_chat(f: &mut Frame, app: &mut App) {
     }
 
     // cost
-    if let Some(cost) = app.cumulative_cost {
-        if cost > 0.0 {
-            right_spans.push(Span::styled(
-                format!(" ${cost:.4} "),
-                Theme::status_accent(),
-            ));
-        }
+    if let Some(cost) = app.cumulative_cost
+        && cost > 0.0
+    {
+        right_spans.push(Span::styled(
+            format!(" ${cost:.4} "),
+            Theme::status_accent(),
+        ));
     }
 
     // show a badge when other sessions have produced recent websocket activity.
@@ -1132,7 +1133,7 @@ impl Card {
                 if inner_w == 0 || w == 0 {
                     1
                 } else {
-                    ((w + inner_w - 1) / inner_w) as u16
+                    w.div_ceil(inner_w) as u16
                 }
             })
             .sum::<u16>()
@@ -1304,12 +1305,10 @@ fn draw_elicitation_popup(f: &mut Frame, app: &mut App, area: Rect) {
                         } else {
                             CHECK_UNCHECKED
                         }
+                    } else if highlighted {
+                        RADIO_SELECTED
                     } else {
-                        if highlighted {
-                            RADIO_SELECTED
-                        } else {
-                            RADIO_UNSELECTED
-                        }
+                        RADIO_UNSELECTED
                     };
                     let style = if highlighted {
                         Theme::status_accent()
@@ -1696,20 +1695,20 @@ pub(crate) fn build_diff_lines(
                 }
 
                 // remaining unpaired deletes
-                for j in paired..dels.len() {
+                for del in dels.iter().skip(paired) {
                     let ln = format!("{:>w$}", start + old_line_idx, w = gw);
                     lines.push(Line::from(vec![
                         Span::styled(format!("  {ln} "), Theme::diff_context()),
-                        Span::styled(format!("- {}", dels[j]), Theme::diff_removed()),
+                        Span::styled(format!("- {del}"), Theme::diff_removed()),
                     ]));
                     old_line_idx += 1;
                 }
                 // remaining unpaired inserts
-                for j in paired..inss.len() {
+                for ins in inss.iter().skip(paired) {
                     let ln = format!("{:>w$}", start + new_line_idx, w = gw);
                     lines.push(Line::from(vec![
                         Span::styled(format!("  {ln} "), Theme::diff_context()),
-                        Span::styled(format!("+ {}", inss[j]), Theme::diff_added()),
+                        Span::styled(format!("+ {ins}"), Theme::diff_added()),
                     ]));
                     new_line_idx += 1;
                 }
@@ -1745,11 +1744,11 @@ fn inline_diff(old: &str, new: &str) -> (Vec<Span<'static>>, Vec<Span<'static>>)
     let mut new_parts: Vec<(String, bool)> = Vec::new();
 
     fn push_part(parts: &mut Vec<(String, bool)>, text: &str, highlighted: bool) {
-        if let Some(last) = parts.last_mut() {
-            if last.1 == highlighted {
-                last.0.push_str(text);
-                return;
-            }
+        if let Some(last) = parts.last_mut()
+            && last.1 == highlighted
+        {
+            last.0.push_str(text);
+            return;
         }
         parts.push((text.to_string(), highlighted));
     }
@@ -2215,8 +2214,12 @@ fn draw_new_session_popup(f: &mut Frame, app: &App) {
         .as_ref()
         .map(|completion| !completion.results.is_empty())
         .unwrap_or(false);
-    let popup_width = area.width.saturating_sub(4).min(72).max(24);
-    let popup_height = area.height.saturating_sub(4).min(if show_completion { 10 } else { 6 }).max(4);
+    let popup_width = area.width.saturating_sub(4).clamp(24, 72);
+    let popup_height = area
+        .height
+        .saturating_sub(4)
+        .min(if show_completion { 10 } else { 6 })
+        .max(4);
     let popup_area = Rect {
         x: area.x + area.width.saturating_sub(popup_width) / 2,
         y: area.y + area.height.saturating_sub(popup_height) / 2,
@@ -2262,26 +2265,26 @@ fn draw_new_session_popup(f: &mut Frame, app: &App) {
     );
     f.set_cursor_position((chunks[2].x + 2 + app.new_session_cursor as u16, chunks[2].y));
 
-    if let Some(completion) = &app.new_session_completion {
-        if !completion.results.is_empty() {
-            let items: Vec<ListItem> = completion
-                .results
-                .iter()
-                .map(|entry| {
-                    ListItem::new(Line::from(vec![Span::styled(
-                        entry.path.clone(),
-                        Theme::input(),
-                    )]))
-                })
-                .collect();
-            let list = List::new(items)
-                .block(Block::default().style(Theme::popup_bg()))
-                .highlight_style(Theme::selected())
-                .highlight_symbol("");
-            let selected = Some(completion.selected_index).filter(|_| !completion.results.is_empty());
-            let mut state = ListState::default().with_selected(selected);
-            f.render_stateful_widget(list, chunks[3], &mut state);
-        }
+    if let Some(completion) = &app.new_session_completion
+        && !completion.results.is_empty()
+    {
+        let items: Vec<ListItem> = completion
+            .results
+            .iter()
+            .map(|entry| {
+                ListItem::new(Line::from(vec![Span::styled(
+                    entry.path.clone(),
+                    Theme::input(),
+                )]))
+            })
+            .collect();
+        let list = List::new(items)
+            .block(Block::default().style(Theme::popup_bg()))
+            .highlight_style(Theme::selected())
+            .highlight_symbol("");
+        let selected = Some(completion.selected_index).filter(|_| !completion.results.is_empty());
+        let mut state = ListState::default().with_selected(selected);
+        f.render_stateful_widget(list, chunks[3], &mut state);
     }
 
     f.render_widget(
@@ -2421,7 +2424,10 @@ pub(crate) fn shortcut_sections() -> &'static [ShortcutSection] {
                 ("Backspace", "delete left"),
                 ("Del", "delete right"),
                 ("@", "mention a file"),
-                ("Ctrl+t", "cycle thinking level (auto\u{2192}low\u{2192}medium\u{2192}high\u{2192}max)"),
+                (
+                    "Ctrl+t",
+                    "cycle thinking level (auto\u{2192}low\u{2192}medium\u{2192}high\u{2192}max)",
+                ),
             ],
         },
         ShortcutSection {
@@ -2640,7 +2646,7 @@ mod tests {
         let mut app = App::new();
         app.popup = Popup::SessionSelect;
         app.session_id = Some("s2".into());
-        app.session_groups = vec![make_group(Some("/a"), &["s1", "s2"] )];
+        app.session_groups = vec![make_group(Some("/a"), &["s1", "s2"])];
 
         let backend = ratatui::backend::TestBackend::new(80, 20);
         let mut terminal = ratatui::Terminal::new(backend).unwrap();
@@ -2687,7 +2693,6 @@ mod tests {
         assert!(!rendered.contains("[D]"));
         assert!(rendered.contains("tab complete  enter start  esc cancel"));
     }
-
 
     #[test]
     fn message_cards_empty() {

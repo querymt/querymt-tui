@@ -86,17 +86,12 @@ pub struct StateData {
 /// - `Absent` — key was not present in JSON (leave existing TUI state alone)
 /// - `Auto`   — key was `null` or `"auto"` (set to None / auto)
 /// - `Set(s)` — key was a non-auto string like `"low"`, `"high"`, etc.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum ReasoningEffortField {
+    #[default]
     Absent,
     Auto,
     Set(String),
-}
-
-impl Default for ReasoningEffortField {
-    fn default() -> Self {
-        Self::Absent
-    }
 }
 
 fn deserialize_reasoning_effort<'de, D>(d: D) -> Result<ReasoningEffortField, D::Error>

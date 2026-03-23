@@ -143,7 +143,7 @@ impl RenderCtx<'_> {
             }
             Tag::List(start) => {
                 self.list_depth += 1;
-                self.list_indices.push(start.map(|n| n as u64));
+                self.list_indices.push(*start);
             }
             Tag::Item => {
                 // handled in Text via prefix
@@ -378,12 +378,9 @@ impl RenderCtx<'_> {
         // Build a data row Line from cell spans.
         let build_row = |row: &[Vec<Span<'static>>], is_header: bool| -> Line<'static> {
             let mut spans: Vec<Span<'static>> = Vec::new();
-            for c in 0..num_cols {
+            for (c, &col_w) in col_widths.iter().enumerate().take(num_cols) {
                 // left border
-                spans.push(Span::styled(
-                    if c == 0 { "│ " } else { "│ " }.to_string(),
-                    border_style,
-                ));
+                spans.push(Span::styled("│ ".to_string(), border_style));
 
                 let cell = row.get(c);
                 let w = cell.map(|cl| cell_width(cl)).unwrap_or(0);
@@ -392,7 +389,7 @@ impl RenderCtx<'_> {
                     .get(c)
                     .copied()
                     .unwrap_or(Alignment::None);
-                let (lpad, rpad) = padding(w, col_widths[c], align);
+                let (lpad, rpad) = padding(w, col_w, align);
 
                 // left padding
                 if lpad > 0 {

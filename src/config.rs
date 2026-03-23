@@ -264,7 +264,10 @@ mod tests {
 
     #[test]
     fn config_empty_deserializes_to_default() {
-        assert_eq!(toml::from_str::<TuiConfig>("").unwrap(), TuiConfig::default());
+        assert_eq!(
+            toml::from_str::<TuiConfig>("").unwrap(),
+            TuiConfig::default()
+        );
     }
 
     // ── TuiCache TOML ─────────────────────────────────────────────────────────
@@ -274,11 +277,17 @@ mod tests {
         let mut sc = SessionCache::default();
         sc.modes.insert(
             "build".into(),
-            ModeState { model: "anthropic/claude-sonnet".into(), effort: "high".into() },
+            ModeState {
+                model: "anthropic/claude-sonnet".into(),
+                effort: "high".into(),
+            },
         );
         sc.modes.insert(
             "plan".into(),
-            ModeState { model: "openai/gpt-4o".into(), effort: "auto".into() },
+            ModeState {
+                model: "openai/gpt-4o".into(),
+                effort: "auto".into(),
+            },
         );
         let cache = TuiCache {
             sessions: [("sid-1".into(), sc)].into_iter().collect(),
@@ -319,7 +328,10 @@ mod tests {
         let mut sc = SessionCache::default();
         sc.modes.insert(
             "build".into(),
-            ModeState { model: "anthropic/claude-sonnet".into(), effort: "high".into() },
+            ModeState {
+                model: "anthropic/claude-sonnet".into(),
+                effort: "high".into(),
+            },
         );
         let cache = TuiCache {
             sessions: [("sid-1".into(), sc)].into_iter().collect(),
@@ -339,7 +351,10 @@ mod tests {
         let mut sc = SessionCache::default();
         sc.modes.insert(
             "build".into(),
-            ModeState { model: "anthropic/claude-sonnet".into(), effort: "high".into() },
+            ModeState {
+                model: "anthropic/claude-sonnet".into(),
+                effort: "high".into(),
+            },
         );
         let cache = TuiCache {
             sessions: [("sid-1".into(), sc)].into_iter().collect(),
@@ -400,14 +415,20 @@ mod tests {
     fn from_app_captures_session_cache() {
         let mut app = App::new();
         let mut modes = HashMap::new();
-        modes.insert("build".into(), CachedModeState {
-            model: "anthropic/claude-sonnet".into(),
-            effort: Some("high".into()),
-        });
-        modes.insert("plan".into(), CachedModeState {
-            model: "openai/gpt-4o".into(),
-            effort: None, // auto
-        });
+        modes.insert(
+            "build".into(),
+            CachedModeState {
+                model: "anthropic/claude-sonnet".into(),
+                effort: Some("high".into()),
+            },
+        );
+        modes.insert(
+            "plan".into(),
+            CachedModeState {
+                model: "openai/gpt-4o".into(),
+                effort: None, // auto
+            },
+        );
         app.session_cache.insert("sid-1".into(), modes);
 
         let cache = TuiCache::from_app(&app);
@@ -425,11 +446,17 @@ mod tests {
         let mut sc = SessionCache::default();
         sc.modes.insert(
             "build".into(),
-            ModeState { model: "anthropic/claude-sonnet".into(), effort: "high".into() },
+            ModeState {
+                model: "anthropic/claude-sonnet".into(),
+                effort: "high".into(),
+            },
         );
         sc.modes.insert(
             "plan".into(),
-            ModeState { model: "openai/gpt-4o".into(), effort: "auto".into() },
+            ModeState {
+                model: "openai/gpt-4o".into(),
+                effort: "auto".into(),
+            },
         );
         let cache = TuiCache {
             sessions: [("sid-1".into(), sc)].into_iter().collect(),
@@ -458,10 +485,13 @@ mod tests {
     fn from_app_hydrate_round_trip() {
         let mut app = App::new();
         let mut modes = HashMap::new();
-        modes.insert("build".into(), CachedModeState {
-            model: "anthropic/claude-sonnet".into(),
-            effort: Some("max".into()),
-        });
+        modes.insert(
+            "build".into(),
+            CachedModeState {
+                model: "anthropic/claude-sonnet".into(),
+                effort: Some("max".into()),
+            },
+        );
         app.session_cache.insert("sid-1".into(), modes);
 
         let cache = TuiCache::from_app(&app);
