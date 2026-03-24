@@ -124,7 +124,7 @@ fn build_message_cards(app: &mut App) -> &[Card] {
         match entry {
             ChatEntry::User { text, .. } => {
                 flush_tools(&mut pending_tools, &mut app.card_cache.cards);
-                let lines = text.lines().map(|l| Line::from(l.to_string())).collect();
+                let lines = markdown::render(text, Theme::user_text(), &app.hl);
                 app.card_cache.cards.push(Card::new(CardKind::User, lines));
             }
             ChatEntry::Assistant(text) => {
@@ -2713,6 +2713,33 @@ mod tests {
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].kind, CardKind::User);
         assert_eq!(app.card_cache.processed_messages, 1);
+    }
+
+    #[test]
+    fn message_cards_user_supports_markdown_rendering() {
+        let mut app = App::new();
+        app.messages.push(ChatEntry::User {
+            text: "- item\n\n`code`".into(),
+            message_id: None,
+        });
+
+        let cards = build_message_cards(&mut app);
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].kind, CardKind::User);
+
+        let rendered: Vec<String> = cards[0]
+            .lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+
+        assert!(rendered.iter().any(|line| line.contains(MD_BULLET)));
+        assert!(rendered.iter().any(|line| line.contains("code")));
     }
 
     #[test]
