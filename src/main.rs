@@ -2106,6 +2106,7 @@ mod session_popup_key_tests {
 mod chord_reasoning_effort_tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use serial_test::serial;
     use tokio::sync::mpsc;
 
     fn ctrl_t() -> KeyEvent {
@@ -2115,6 +2116,7 @@ mod chord_reasoning_effort_tests {
     // ── Ctrl+t cycles reasoning effort and sends message ─────────────────────
 
     #[test]
+    #[serial]
     fn ctrl_t_cycles_effort_and_sends_msg() {
         install_temp_persistence_paths("ctrl-t-1");
         let _guard = PersistenceGuard::new("main-test");
@@ -2135,6 +2137,7 @@ mod chord_reasoning_effort_tests {
     }
 
     #[test]
+    #[serial]
     fn ctrl_t_full_cycle_sends_auto_on_wrap() {
         let _guard = PersistenceGuard::new("main-test");
         let (tx, mut rx) = mpsc::unbounded_channel::<ClientMsg>();
@@ -2154,6 +2157,7 @@ mod chord_reasoning_effort_tests {
     }
 
     #[test]
+    #[serial]
     fn ctrl_t_status_updated() {
         let _guard = PersistenceGuard::new("main-test");
         let (tx, _rx) = mpsc::unbounded_channel::<ClientMsg>();
@@ -2172,6 +2176,7 @@ mod chord_reasoning_effort_tests {
 mod reasoning_effort_integration_tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use serial_test::serial;
     use tokio::sync::mpsc;
 
     fn make_model(provider: &str, model: &str) -> crate::protocol::ModelEntry {
@@ -2197,6 +2202,7 @@ mod reasoning_effort_integration_tests {
     // ── Ctrl+x t caches mode state per session ──────────────────────────────
 
     #[test]
+    #[serial]
     fn ctrl_t_caches_mode_state_for_session() {
         let _guard = PersistenceGuard::new("main-test");
         let (tx, _rx) = mpsc::unbounded_channel::<ClientMsg>();
@@ -2222,6 +2228,7 @@ mod reasoning_effort_integration_tests {
     // ── Tab: saves outgoing, restores incoming ────────────────────────────────
 
     #[test]
+    #[serial]
     fn tab_saves_outgoing_and_restores_incoming_mode_state() {
         let _guard = PersistenceGuard::new("main-test");
         let (tx, mut rx) = mpsc::unbounded_channel::<ClientMsg>();
@@ -2277,6 +2284,7 @@ mod reasoning_effort_integration_tests {
     }
 
     #[test]
+    #[serial]
     fn tab_no_cache_entry_leaves_model_and_effort_unchanged() {
         let _guard = PersistenceGuard::new("main-test");
         let (tx, mut rx) = mpsc::unbounded_channel::<ClientMsg>();
@@ -2307,6 +2315,7 @@ mod reasoning_effort_integration_tests {
     // ── Model select: drops effort to auto ────────────────────────────────────
 
     #[test]
+    #[serial]
     fn model_select_drops_effort_to_auto() {
         let _guard = PersistenceGuard::new("main-test");
         let (tx, mut rx) = mpsc::unbounded_channel::<ClientMsg>();
@@ -2343,6 +2352,7 @@ mod reasoning_effort_integration_tests {
     }
 
     #[test]
+    #[serial]
     fn model_select_caches_new_model_with_auto_effort() {
         let _guard = PersistenceGuard::new("main-test");
         let (tx, _rx) = mpsc::unbounded_channel::<ClientMsg>();
@@ -2370,6 +2380,7 @@ mod reasoning_effort_integration_tests {
     }
 
     #[test]
+    #[serial]
     fn model_select_no_effort_msg_when_already_auto() {
         let _guard = PersistenceGuard::new("main-test");
         let (tx, mut rx) = mpsc::unbounded_channel::<ClientMsg>();

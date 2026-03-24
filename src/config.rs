@@ -217,6 +217,7 @@ impl TuiCache {
 mod tests {
     use super::*;
     use crate::app::{App, CachedModeState};
+    use serial_test::serial;
 
     fn unique_temp_dir(label: &str) -> std::path::PathBuf {
         let nanos = std::time::SystemTime::now()
@@ -346,6 +347,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn cache_default_load_save_respects_override_path() {
         let _guard = TestPathGuard::new("cache-override");
         let mut sc = SessionCache::default();
@@ -398,6 +400,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn config_default_load_save_respects_override_path() {
         let _guard = TestPathGuard::new("cfg-override");
         let cfg = TuiConfig {
