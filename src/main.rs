@@ -1370,7 +1370,8 @@ fn handle_key(
 /// Persist current app state to `~/.qmt/tui.toml`.  Called at every
 /// user-initiated change that should survive a restart.
 fn save_config(app: &App) {
-    config::TuiConfig::from_app(app).save();
+    let merged = config::TuiConfig::load().with_app_settings(app);
+    merged.save();
 }
 
 /// Persist session effort cache to `~/.cache/qmt/tui-cache.toml`.
@@ -2111,39 +2112,12 @@ pub(crate) fn apply_sessions_key(
 }
 
 #[cfg(test)]
-fn install_temp_persistence_paths(label: &str) {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let pid = std::process::id();
-    let dir = std::env::temp_dir().join(format!("qmt-main-tests-{label}-{pid}-{nanos}"));
-    std::fs::create_dir_all(&dir).unwrap();
-    config::test_set_config_path_override(Some(dir.join("tui.toml")));
-    config::test_set_cache_path_override(Some(dir.join("tui-cache.toml")));
-}
-
-#[cfg(test)]
-fn clear_temp_persistence_paths() {
-    config::test_set_config_path_override(None);
-    config::test_set_cache_path_override(None);
-}
-
-#[cfg(test)]
-struct PersistenceGuard;
+struct PersistenceGuard(config::TestPersistenceGuard);
 
 #[cfg(test)]
 impl PersistenceGuard {
     fn new(label: &str) -> Self {
-        install_temp_persistence_paths(label);
-        Self
-    }
-}
-
-#[cfg(test)]
-impl Drop for PersistenceGuard {
-    fn drop(&mut self) {
-        clear_temp_persistence_paths();
+        Self(config::TestPersistenceGuard::new(label))
     }
 }
 
@@ -2938,7 +2912,6 @@ mod chord_reasoning_effort_tests {
     #[test]
     #[serial]
     fn ctrl_t_cycles_effort_and_sends_msg() {
-        install_temp_persistence_paths("ctrl-t-1");
         let _guard = PersistenceGuard::new("main-test");
         let (tx, mut rx) = mpsc::unbounded_channel::<ClientMsg>();
         let mut app = App::new();

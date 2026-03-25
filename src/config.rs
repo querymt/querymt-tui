@@ -16,6 +16,7 @@ use crate::app::CachedModeState;
 
 static CONFIG_PATH_OVERRIDE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
 static CACHE_PATH_OVERRIDE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+static TEST_PERSISTENCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn config_path_override() -> &'static Mutex<Option<PathBuf>> {
     CONFIG_PATH_OVERRIDE.get_or_init(|| Mutex::new(None))
@@ -23,6 +24,10 @@ fn config_path_override() -> &'static Mutex<Option<PathBuf>> {
 
 fn cache_path_override() -> &'static Mutex<Option<PathBuf>> {
     CACHE_PATH_OVERRIDE.get_or_init(|| Mutex::new(None))
+}
+
+fn test_persistence_lock() -> &'static Mutex<()> {
+    TEST_PERSISTENCE_LOCK.get_or_init(|| Mutex::new(()))
 }
 
 /// Override the config path used by `TuiConfig::load()` / `save()`.
@@ -35,6 +40,36 @@ pub fn test_set_config_path_override(path: Option<PathBuf>) {
 /// Intended for tests only; production code should not call this.
 pub fn test_set_cache_path_override(path: Option<PathBuf>) {
     *cache_path_override().lock().unwrap() = path;
+}
+
+#[cfg(test)]
+pub struct TestPersistenceGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl TestPersistenceGuard {
+    pub fn new(label: &str) -> Self {
+        let lock = test_persistence_lock().lock().unwrap();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("qmt-persistence-tests-{label}-{pid}-{nanos}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        test_set_config_path_override(Some(dir.join("tui.toml")));
+        test_set_cache_path_override(Some(dir.join("tui-cache.toml")));
+        Self { _lock: lock }
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestPersistenceGuard {
+    fn drop(&mut self) {
+        test_set_config_path_override(None);
+        test_set_cache_path_override(None);
+    }
 }
 
 // ── TuiConfig — ~/.qmt/tui.toml ──────────────────────────────────────────────
@@ -114,12 +149,13 @@ impl TuiConfig {
         }
     }
 
-    pub fn from_app(app: &crate::app::App) -> Self {
-        TuiConfig {
-            theme: Some(crate::theme::Theme::current_id().to_string()),
-            show_thinking: Some(app.show_thinking),
-            server: ServerConfig::default(),
-        }
+    /// Return a copy of this config with app-owned UI fields refreshed.
+    /// This intentionally preserves unrelated persisted settings like `server.*`.
+    pub fn with_app_settings(&self, app: &crate::app::App) -> Self {
+        let mut merged = self.clone();
+        merged.theme = Some(crate::theme::Theme::current_id().to_string());
+        merged.show_thinking = Some(app.show_thinking);
+        merged
     }
 }
 
@@ -252,21 +288,11 @@ mod tests {
         dir
     }
 
-    struct TestPathGuard;
+    struct TestPathGuard(TestPersistenceGuard);
 
     impl TestPathGuard {
         fn new(label: &str) -> Self {
-            let dir = unique_temp_dir(label);
-            test_set_config_path_override(Some(dir.join("tui.toml")));
-            test_set_cache_path_override(Some(dir.join("tui-cache.toml")));
-            Self
-        }
-    }
-
-    impl Drop for TestPathGuard {
-        fn drop(&mut self) {
-            test_set_config_path_override(None);
-            test_set_cache_path_override(None);
+            Self(TestPersistenceGuard::new(label))
         }
     }
 
@@ -475,7 +501,53 @@ mod tests {
         assert_eq!(loaded, cfg);
     }
 
+    #[test]
+    #[serial]
+    fn config_save_load_round_trip_preserves_server_fields() {
+        let _guard = TestPathGuard::new("cfg-preserve-server");
+        let cfg = TuiConfig {
+            theme: Some("base16-ocean".into()),
+            show_thinking: Some(false),
+            server: ServerConfig {
+                addr: Some("127.0.0.1:3030".into()),
+                tls: Some(true),
+                binary_path: Some("/usr/local/bin/qmtcode".into()),
+                launch_mode: Some(ServerLaunchMode::Dashboard),
+                binary_args: Some(vec!["--dashboard=127.0.0.1:3030".into()]),
+                auto_start: Some(false),
+                shutdown_on_exit: Some(false),
+            },
+        };
+        cfg.save();
+        let loaded = TuiConfig::load();
+        assert_eq!(loaded, cfg);
+    }
+
     // ── from_app ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn with_app_settings_preserves_server_settings() {
+        let mut app = App::new();
+        app.show_thinking = false;
+
+        let existing = TuiConfig {
+            theme: Some("base16-ocean".into()),
+            show_thinking: Some(true),
+            server: ServerConfig {
+                addr: Some("127.0.0.1:3030".into()),
+                tls: Some(true),
+                binary_path: Some("/usr/local/bin/qmtcode".into()),
+                launch_mode: Some(ServerLaunchMode::Dashboard),
+                binary_args: Some(vec!["--dashboard=127.0.0.1:3030".into()]),
+                auto_start: Some(false),
+                shutdown_on_exit: Some(false),
+            },
+        };
+
+        let merged = existing.with_app_settings(&app);
+        assert_eq!(merged.show_thinking, Some(false));
+        assert_eq!(merged.server, existing.server);
+    }
 
     #[test]
     fn from_app_captures_session_cache() {
