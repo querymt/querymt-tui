@@ -830,24 +830,14 @@ impl App {
         let q = self.session_filter.to_lowercase();
         let mut items = Vec::new();
 
-        // When no filter is active, cap the number of visible groups.
-        let cap_groups = q.is_empty();
-        let hidden_groups = if cap_groups {
-            self.session_groups.len().saturating_sub(MAX_VISIBLE_GROUPS)
-        } else {
-            0
-        };
+        // Cap the number of visible groups.
+        let hidden_groups = self.session_groups.len().saturating_sub(MAX_VISIBLE_GROUPS);
 
-        let groups_iter: Box<dyn Iterator<Item = (usize, &SessionGroup)>> = if cap_groups {
-            Box::new(
-                self.session_groups
-                    .iter()
-                    .enumerate()
-                    .take(MAX_VISIBLE_GROUPS),
-            )
-        } else {
-            Box::new(self.session_groups.iter().enumerate())
-        };
+        let groups_iter = self
+            .session_groups
+            .iter()
+            .enumerate()
+            .take(MAX_VISIBLE_GROUPS);
 
         for (group_idx, group) in groups_iter {
             let collapse_key = group.cwd.clone().unwrap_or_default();
@@ -878,19 +868,10 @@ impl App {
             });
 
             if !collapsed {
-                // When a filter is active show all matches; otherwise cap at
-                // MAX_RECENT_SESSIONS and append a ShowMore row if needed.
-                let capped = q.is_empty();
-                let visible: Vec<usize> = if capped {
-                    matching.iter().copied().take(MAX_RECENT_SESSIONS).collect()
-                } else {
-                    matching.clone()
-                };
-                let hidden = if capped {
-                    matching.len().saturating_sub(MAX_RECENT_SESSIONS)
-                } else {
-                    0
-                };
+                // Cap at MAX_RECENT_SESSIONS and append a ShowMore row if needed.
+                let visible: Vec<usize> =
+                    matching.iter().copied().take(MAX_RECENT_SESSIONS).collect();
+                let hidden = matching.len().saturating_sub(MAX_RECENT_SESSIONS);
 
                 for session_idx in visible {
                     items.push(StartPageItem::Session {
@@ -905,7 +886,7 @@ impl App {
             }
         }
 
-        // Trailing ShowMore for hidden groups (only when filter is inactive).
+        // Trailing ShowMore for hidden groups.
         if hidden_groups > 0 {
             items.push(StartPageItem::ShowMore {
                 remaining: hidden_groups,
