@@ -5472,7 +5472,7 @@ mod start_page_tests {
     }
 
     #[test]
-    fn visible_items_filter_active_bypasses_cap() {
+    fn visible_items_filter_active_still_caps_sessions() {
         let mut app = App::new();
         app.session_groups = vec![make_group(
             Some("/a"),
@@ -5485,13 +5485,12 @@ mod start_page_tests {
         )];
         app.session_filter = "aaa".to_string();
         let items = app.visible_start_items();
-        // All 4 match the filter → header + 4 sessions, no ShowMore
+        // All 4 match the filter but cap still applies → header + 3 sessions + ShowMore(1)
         assert_eq!(items.len(), 5);
-        assert!(
-            !items
-                .iter()
-                .any(|i| matches!(i, StartPageItem::ShowMore { .. }))
-        );
+        assert!(matches!(
+            items.last(),
+            Some(StartPageItem::ShowMore { remaining: 1 })
+        ));
     }
 
     // ── MAX_VISIBLE_GROUPS cap ────────────────────────────────────────────────
@@ -5552,7 +5551,7 @@ mod start_page_tests {
     }
 
     #[test]
-    fn visible_items_group_cap_filter_active_bypasses() {
+    fn visible_items_group_cap_applied_with_filter_active() {
         let mut app = App::new();
         app.session_groups = vec![
             make_group(Some("/a"), &[("aaa1", None)]),
@@ -5562,17 +5561,16 @@ mod start_page_tests {
         ];
         app.session_filter = "aaa".to_string();
         let items = app.visible_start_items();
-        // Filter active → all 4 groups shown, no trailing ShowMore
+        // Filter active but group cap still applies → 3 groups + trailing ShowMore(1)
         let headers = items
             .iter()
             .filter(|i| matches!(i, StartPageItem::GroupHeader { .. }))
             .count();
-        assert_eq!(headers, 4);
-        assert!(
-            !items
-                .iter()
-                .any(|i| matches!(i, StartPageItem::ShowMore { .. }))
-        );
+        assert_eq!(headers, 3);
+        assert!(matches!(
+            items.last(),
+            Some(StartPageItem::ShowMore { remaining: 1 })
+        ));
     }
 }
 
