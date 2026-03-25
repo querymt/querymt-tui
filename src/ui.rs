@@ -698,14 +698,14 @@ fn draw_start(f: &mut Frame, app: &mut App) {
     // Button: 1 gap row + 1 text row (no border).
     const BUTTON_H: u16 = 2; // 1 gap + 1 button
 
-    // Total content = art section + filter row + session rows + button.
+    // Total content = art section + filter row + gap + session rows + button.
     // Cap rows_h to what fits so centring stays correct on short terminals.
     let middle = outer[1];
     let max_rows_h = middle
         .height
-        .saturating_sub(art_section_height + 1 + BUTTON_H);
+        .saturating_sub(art_section_height + 1 + 1 + BUTTON_H);
     let capped_rows_h = rows_h.min(max_rows_h);
-    let content_h = (art_section_height + 1 + capped_rows_h + BUTTON_H).min(middle.height);
+    let content_h = (art_section_height + 1 + 1 + capped_rows_h + BUTTON_H).min(middle.height);
 
     // Centre the content block vertically inside `middle`.
     let top_pad = middle.height.saturating_sub(content_h) / 2;
@@ -720,15 +720,16 @@ fn draw_start(f: &mut Frame, app: &mut App) {
 
     let content_area = inner[1];
 
-    // Sub-divide content_area into art | filter | session rows | gap | button.
+    // Sub-divide content_area into art | filter | gap | session rows | gap | button.
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(art_section_height), // art
-            Constraint::Length(1),                  // filter
-            Constraint::Min(0),                     // session rows
-            Constraint::Length(1),                  // gap before button
-            Constraint::Length(1),                  // button
+            Constraint::Length(art_section_height), // [0] art
+            Constraint::Length(1),                  // [1] filter
+            Constraint::Length(1),                  // [2] gap after filter
+            Constraint::Min(0),                     // [3] session rows
+            Constraint::Length(1),                  // [4] gap before button
+            Constraint::Length(1),                  // [5] button
         ])
         .split(content_area);
 
@@ -828,7 +829,7 @@ fn draw_start(f: &mut Frame, app: &mut App) {
     ));
 
     // ── session list ──────────────────────────────────────────────────────────
-    let list_area = sections[2];
+    let list_area = sections[3];
 
     if rows.is_empty() {
         // Empty state
@@ -899,7 +900,7 @@ fn draw_start(f: &mut Frame, app: &mut App) {
     let button_x = col_x + col_w.saturating_sub(button_w) / 2;
     let button_rect = Rect {
         x: button_x,
-        y: sections[4].y,
+        y: sections[5].y,
         width: button_w,
         height: 1,
     };
