@@ -1168,11 +1168,9 @@ impl App {
 
     pub fn push_log(&mut self, level: LogLevel, target: &'static str, message: impl Into<String>) {
         let message = message.into();
-        if self
-            .logs
-            .last()
-            .is_some_and(|entry| entry.level == level && entry.target == target && entry.message == message)
-        {
+        if self.logs.last().is_some_and(|entry| {
+            entry.level == level && entry.target == target && entry.message == message
+        }) {
             return;
         }
         self.logs.push(AppLogEntry {
@@ -3952,7 +3950,9 @@ mod tests {
         app.arm_cancel_confirm();
         assert!(app.cancel_confirm_active());
         assert_eq!(app.status, "press Esc again to stop");
-        assert!(matches!(app.logs.last(), Some(entry) if entry.message == "press Esc again to stop"));
+        assert!(
+            matches!(app.logs.last(), Some(entry) if entry.message == "press Esc again to stop")
+        );
 
         app.pending_cancel_confirm_until = Some(Instant::now() - Duration::from_millis(1));
         app.clear_expired_cancel_confirm();
@@ -4220,7 +4220,9 @@ mod tests {
         assert_eq!(app.reconnect_attempt, 3);
         assert_eq!(app.reconnect_delay_ms, Some(2000));
         assert_eq!(app.status, "waiting for server - retry 3 in 2.0s");
-        assert!(matches!(app.logs.last(), Some(entry) if entry.target == "connection" && entry.level == LogLevel::Warn));
+        assert!(
+            matches!(app.logs.last(), Some(entry) if entry.target == "connection" && entry.level == LogLevel::Warn)
+        );
 
         app.handle_connection_event(ConnectionEvent::Disconnected {
             reason: "socket closed".into(),
@@ -4228,7 +4230,9 @@ mod tests {
         assert_eq!(app.conn, ConnState::Disconnected);
         assert_eq!(app.reconnect_delay_ms, None);
         assert_eq!(app.status, "connection lost - socket closed");
-        assert!(matches!(app.logs.last(), Some(entry) if entry.message == "connection lost - socket closed"));
+        assert!(
+            matches!(app.logs.last(), Some(entry) if entry.message == "connection lost - socket closed")
+        );
 
         app.session_id = Some("session-1".into());
         app.handle_connection_event(ConnectionEvent::Connected);
@@ -4236,7 +4240,9 @@ mod tests {
         assert_eq!(app.reconnect_attempt, 0);
         assert_eq!(app.reconnect_delay_ms, None);
         assert_eq!(app.status, "reconnected");
-        assert!(matches!(app.logs.last(), Some(entry) if entry.level == LogLevel::Info && entry.message == "reconnected"));
+        assert!(
+            matches!(app.logs.last(), Some(entry) if entry.level == LogLevel::Info && entry.message == "reconnected")
+        );
     }
 
     #[test]

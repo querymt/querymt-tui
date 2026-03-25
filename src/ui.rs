@@ -2588,7 +2588,10 @@ fn draw_log_popup(f: &mut Frame, app: &App) {
         Paragraph::new(filter_line).style(Theme::popup_bg()),
         chunks[1],
     );
-    f.set_cursor_position((chunks[1].x + 2 + app.log_filter.chars().count() as u16, chunks[1].y));
+    f.set_cursor_position((
+        chunks[1].x + 2 + app.log_filter.chars().count() as u16,
+        chunks[1].y,
+    ));
 
     f.render_widget(
         Paragraph::new(Span::styled(
@@ -2619,7 +2622,11 @@ fn draw_log_popup(f: &mut Frame, app: &App) {
                 );
                 let avail = list_w.saturating_sub(prefix.chars().count());
                 let message = if entry.message.chars().count() > avail {
-                    let truncated: String = entry.message.chars().take(avail.saturating_sub(1)).collect();
+                    let truncated: String = entry
+                        .message
+                        .chars()
+                        .take(avail.saturating_sub(1))
+                        .collect();
                     format!("{truncated}{ELLIPSIS}")
                 } else {
                     entry.message.clone()
@@ -2633,7 +2640,8 @@ fn draw_log_popup(f: &mut Frame, app: &App) {
     };
 
     let list = List::new(items).block(Block::default().style(Theme::popup_bg()));
-    let selected = Some(app.log_cursor.min(filtered.len().saturating_sub(1))).filter(|_| !filtered.is_empty());
+    let selected =
+        Some(app.log_cursor.min(filtered.len().saturating_sub(1))).filter(|_| !filtered.is_empty());
     let mut state = ListState::default().with_selected(selected);
     f.render_stateful_widget(list, chunks[3], &mut state);
 
@@ -3045,7 +3053,11 @@ mod tests {
         app.popup = Popup::Log;
         app.log_filter = "server".into();
         app.log_level_filter = crate::app::LogLevel::Info;
-        app.push_log(crate::app::LogLevel::Info, "server", "starting local server");
+        app.push_log(
+            crate::app::LogLevel::Info,
+            "server",
+            "starting local server",
+        );
         app.push_log(crate::app::LogLevel::Error, "server", "start failed");
         app.log_cursor = app.filtered_logs().len().saturating_sub(1);
 
@@ -3709,7 +3721,6 @@ mod tests {
                 .any(|&(key, desc)| key == "l" && desc == "logs popup")
         );
     }
-
 
     /// Every section title must be unique.
     #[test]

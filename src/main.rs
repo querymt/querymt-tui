@@ -1398,7 +1398,11 @@ fn handle_chord(
             app.should_quit = true;
         }
         KeyCode::Char('e') => {
-            app.set_status(app::LogLevel::Warn, "editor", "external editor unavailable here");
+            app.set_status(
+                app::LogLevel::Warn,
+                "editor",
+                "external editor unavailable here",
+            );
         }
         KeyCode::Char('s') => {
             if !can_send_server_commands(app) {
@@ -1429,7 +1433,11 @@ fn handle_chord(
                 return Ok(());
             }
             if app.is_turn_active() {
-                app.set_status(app::LogLevel::Warn, "session", "cannot undo while agent is active");
+                app.set_status(
+                    app::LogLevel::Warn,
+                    "session",
+                    "cannot undo while agent is active",
+                );
             } else if app.has_pending_session_op() || app.has_pending_undo() {
                 app.set_status(app::LogLevel::Warn, "session", "undo already pending");
             } else if let Some(turn) = app.current_undo_target().cloned() {
@@ -1453,7 +1461,11 @@ fn handle_chord(
                 return Ok(());
             }
             if app.is_turn_active() {
-                app.set_status(app::LogLevel::Warn, "session", "cannot redo while agent is active");
+                app.set_status(
+                    app::LogLevel::Warn,
+                    "session",
+                    "cannot redo while agent is active",
+                );
             } else if app.has_pending_session_op() || app.has_pending_undo() {
                 app.set_status(app::LogLevel::Warn, "session", "undo already pending");
             } else if app.can_redo() {
@@ -1962,7 +1974,11 @@ fn handle_model_popup_key(
                 // Cache the new model + auto effort for this session + mode.
                 app.cache_session_mode_state();
                 app.popup = Popup::None;
-                app.set_status(app::LogLevel::Info, "model", format!("model: {}", model.label));
+                app.set_status(
+                    app::LogLevel::Info,
+                    "model",
+                    format!("model: {}", model.label),
+                );
                 save_config(app);
                 save_cache(app);
             }

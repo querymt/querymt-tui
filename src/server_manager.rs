@@ -397,7 +397,10 @@ mod tests {
     fn find_binary_info_reports_missing_configured_path_and_path_lookup_attempt() {
         let info = find_binary_info(Some("/nonexistent/path/to/qmtcode"));
 
-        assert_eq!(info.configured_path, Some("/nonexistent/path/to/qmtcode".into()));
+        assert_eq!(
+            info.configured_path,
+            Some("/nonexistent/path/to/qmtcode".into())
+        );
         assert!(!info.configured_exists);
         assert!(info.used_path_lookup);
         if let Some(ref binary) = info.binary {
