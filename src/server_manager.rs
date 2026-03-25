@@ -613,18 +613,14 @@ mod tests {
         // followed eventually by Starting + StartFailed (bad binary).
         let mut saw_reaction = false;
         for _ in 0..5 {
-            if let Ok(Some(ev)) =
-                tokio::time::timeout(Duration::from_secs(5), event_rx.recv()).await
+            if let Ok(Some(
+                ServerEvent::Stopped { .. }
+                | ServerEvent::Starting
+                | ServerEvent::StartFailed { .. },
+            )) = tokio::time::timeout(Duration::from_secs(5), event_rx.recv()).await
             {
-                match ev {
-                    ServerEvent::Stopped { .. }
-                    | ServerEvent::Starting
-                    | ServerEvent::StartFailed { .. } => {
-                        saw_reaction = true;
-                        break;
-                    }
-                    _ => {}
-                }
+                saw_reaction = true;
+                break;
             }
         }
         assert!(saw_reaction, "supervisor should react to server going down");

@@ -296,18 +296,18 @@ fn build_message_cards(app: &mut App) -> &[Card] {
             ChatEntry::Assistant { content, thinking } => {
                 flush_tools(&mut pending_tools, &mut app.card_cache.cards);
                 let mut lines = Vec::new();
-                if app.show_thinking {
-                    if let Some(thinking_text) = thinking {
-                        let mut rendered =
-                            markdown::render(thinking_text, Theme::thinking_text(), &app.hl);
-                        if let Some(first) = rendered.first_mut() {
-                            first
-                                .spans
-                                .insert(0, Span::styled("\u{25CF} ", Theme::thinking()));
-                        }
-                        lines.extend(rendered);
-                        lines.push(Line::default());
+                if app.show_thinking
+                    && let Some(thinking_text) = thinking
+                {
+                    let mut rendered =
+                        markdown::render(thinking_text, Theme::thinking_text(), &app.hl);
+                    if let Some(first) = rendered.first_mut() {
+                        first
+                            .spans
+                            .insert(0, Span::styled("\u{25CF} ", Theme::thinking()));
                     }
+                    lines.extend(rendered);
+                    lines.push(Line::default());
                 }
                 lines.extend(markdown::render(content, Theme::assistant_text(), &app.hl));
                 app.card_cache
