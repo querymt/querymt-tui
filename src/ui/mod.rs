@@ -595,6 +595,77 @@ mod tests {
     }
 
     #[test]
+    fn draw_model_popup_groups_models_by_provider() {
+        let mut app = App::new();
+        app.popup = Popup::ModelSelect;
+        app.models = vec![
+            crate::protocol::ModelEntry {
+                id: "anthropic/claude-sonnet".into(),
+                label: "Claude Sonnet".into(),
+                provider: "anthropic".into(),
+                model: "claude-sonnet".into(),
+                node_id: None,
+                family: None,
+                quant: None,
+            },
+            crate::protocol::ModelEntry {
+                id: "openai/gpt-4o".into(),
+                label: "GPT-4o".into(),
+                provider: "openai".into(),
+                model: "gpt-4o".into(),
+                node_id: None,
+                family: None,
+                quant: None,
+            },
+        ];
+
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw_model_popup(f, &app)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let rendered = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        let (provider_x, provider_y) =
+            find_buffer_text(&buffer, "anthropic").expect("provider header missing");
+        let marker_x = provider_x.saturating_sub(2);
+
+        assert!(rendered.contains("anthropic"));
+        assert!(rendered.contains("openai"));
+        assert!(rendered.contains("Claude Sonnet"));
+        assert!(rendered.contains("GPT-4o"));
+        assert_eq!(buffer[(marker_x, provider_y)].symbol(), "▸");
+        assert!(
+            buffer[(provider_x, provider_y)]
+                .modifier
+                .contains(ratatui::style::Modifier::BOLD)
+        );
+    }
+
+    #[test]
+    fn draw_model_popup_highlights_hint_keys() {
+        let mut app = App::new();
+        app.popup = Popup::ModelSelect;
+
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw_model_popup(f, &app)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+
+        let (esc_x, esc_y) = find_buffer_text(&buffer, "esc").expect("esc hint missing");
+        let (cancel_x, cancel_y) =
+            find_buffer_text(&buffer, "cancel").expect("cancel hint missing");
+        let (enter_x, enter_y) = find_buffer_text(&buffer, "enter").expect("enter hint missing");
+
+        assert_eq!(esc_y, cancel_y);
+        assert_eq!(esc_y, enter_y);
+        assert_eq!(buffer[(esc_x, esc_y)].fg, buffer[(enter_x, enter_y)].fg);
+        assert_ne!(buffer[(esc_x, esc_y)].fg, buffer[(cancel_x, cancel_y)].fg);
+    }
+
+    #[test]
     fn draw_theme_popup_highlights_hint_keys() {
         let mut app = App::new();
         app.popup = Popup::ThemeSelect;
@@ -615,6 +686,41 @@ mod tests {
         assert_eq!(buffer[(esc_x, esc_y)].fg, buffer[(enter_x, enter_y)].fg);
         assert_ne!(buffer[(esc_x, esc_y)].fg, buffer[(cancel_x, cancel_y)].fg);
         assert_ne!(buffer[(enter_x, enter_y)].fg, buffer[(apply_x, apply_y)].fg);
+    }
+
+    #[test]
+    fn draw_model_popup_shows_current_mode_model_on_short_terminal() {
+        let mut app = App::new();
+        app.popup = Popup::ModelSelect;
+        app.models = (0..12)
+            .map(|i| crate::protocol::ModelEntry {
+                id: format!("anthropic/model-{i}"),
+                label: format!("Model {i}"),
+                provider: "anthropic".into(),
+                model: format!("model-{i}"),
+                node_id: None,
+                family: None,
+                quant: None,
+            })
+            .collect();
+        app.current_provider = Some("anthropic".into());
+        app.current_model = Some("model-8".into());
+        app.model_cursor = 9;
+
+        let backend = ratatui::backend::TestBackend::new(80, 10);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw_model_popup(f, &app)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let rendered = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(
+            rendered.contains("Model 8"),
+            "current mode model should be visible when popup opens"
+        );
     }
 
     #[test]

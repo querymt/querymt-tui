@@ -456,6 +456,24 @@ mod external_editor_tests {
     }
 
     #[test]
+    fn ctrl_x_m_outside_chat_does_not_open_model_popup() {
+        let (tx, _rx) = mpsc::unbounded_channel::<ClientMsg>();
+        let mut app = App::new();
+        app.screen = Screen::Sessions;
+        assert_eq!(
+            handle_key(&mut app, ctrl_x(), &tx).unwrap(),
+            AppAction::None
+        );
+
+        let action = handle_key(&mut app, plain_key('m'), &tx).unwrap();
+
+        assert_eq!(action, AppAction::None);
+        assert_ne!(app.popup, app::Popup::ModelSelect);
+        assert!(app.status.contains("only available in chat"));
+        assert!(matches!(app.logs.last(), Some(entry) if entry.target == "model"));
+    }
+
+    #[test]
     fn apply_external_editor_outcome_updates_input_on_success() {
         let mut app = App::new();
         app.input = "draft".into();
@@ -2155,6 +2173,42 @@ mod reasoning_effort_integration_tests {
 
     #[test]
     #[serial]
+    fn ctrl_x_m_opens_model_popup_at_current_mode_model() {
+        let _guard = PersistenceGuard::new("main-test");
+        let (tx, _rx) = mpsc::unbounded_channel::<ClientMsg>();
+        let mut app = App::new();
+        app.screen = Screen::Chat;
+        app.conn = app::ConnState::Connected;
+        app.agent_mode = "plan".into();
+        app.current_provider = Some("anthropic".into());
+        app.current_model = Some("claude-sonnet".into());
+        app.set_mode_model_preference("plan", "openai", "gpt-4o");
+        app.models = vec![
+            make_model("anthropic", "claude-sonnet"),
+            make_model("openai", "gpt-4o"),
+            make_model("openai", "o3-mini"),
+        ];
+
+        handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL),
+            &tx,
+        )
+        .unwrap();
+        handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE),
+            &tx,
+        )
+        .unwrap();
+
+        assert_eq!(app.popup, app::Popup::ModelSelect);
+        assert_eq!(app.model_filter, "");
+        assert_eq!(app.model_cursor, 3);
+    }
+
+    #[test]
+    #[serial]
     fn model_select_drops_effort_to_auto() {
         let _guard = PersistenceGuard::new("main-test");
         let (tx, mut rx) = mpsc::unbounded_channel::<ClientMsg>();
@@ -2167,7 +2221,7 @@ mod reasoning_effort_integration_tests {
         app.current_model = Some("claude-sonnet".into());
         app.reasoning_effort = Some("high".into());
         app.models = vec![make_model("anthropic", "claude-opus")];
-        app.model_cursor = 0;
+        app.model_cursor = 1;
 
         handle_key(
             &mut app,
@@ -2204,7 +2258,7 @@ mod reasoning_effort_integration_tests {
         app.current_model = Some("claude-sonnet".into());
         app.reasoning_effort = Some("high".into());
         app.models = vec![make_model("anthropic", "claude-opus")];
-        app.model_cursor = 0;
+        app.model_cursor = 1;
 
         handle_key(
             &mut app,
@@ -2232,7 +2286,7 @@ mod reasoning_effort_integration_tests {
         app.current_model = Some("claude-sonnet".into());
         app.reasoning_effort = None; // already auto
         app.models = vec![make_model("anthropic", "claude-opus")];
-        app.model_cursor = 0;
+        app.model_cursor = 1;
 
         handle_key(
             &mut app,

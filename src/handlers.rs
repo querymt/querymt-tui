@@ -343,9 +343,17 @@ pub(crate) fn handle_chord(
 ) -> anyhow::Result<()> {
     match key.code {
         KeyCode::Char('m') => {
+            if app.screen != Screen::Chat {
+                app.set_status(
+                    app::LogLevel::Warn,
+                    "model",
+                    "model select is only available in chat",
+                );
+                return Ok(());
+            }
             app.popup = Popup::ModelSelect;
-            app.model_cursor = 0;
             app.model_filter.clear();
+            app.model_cursor = app.current_mode_model_cursor();
         }
         KeyCode::Char('n') => {
             if !can_send_server_commands(app) {
@@ -936,14 +944,17 @@ pub(crate) fn handle_model_popup_key(
             app.model_cursor = app.model_cursor.saturating_sub(1);
         }
         KeyCode::Down => {
-            let max = app.filtered_models().len().saturating_sub(1);
+            let max = app.visible_model_popup_items().len().saturating_sub(1);
             app.model_cursor = (app.model_cursor + 1).min(max);
         }
         KeyCode::Enter => {
             let selected: Option<protocol::ModelEntry> = app
-                .filtered_models()
+                .visible_model_popup_items()
                 .get(app.model_cursor)
-                .cloned()
+                .and_then(|item| match item {
+                    crate::app::ModelPopupItem::Model { model_idx } => app.models.get(*model_idx),
+                    crate::app::ModelPopupItem::ProviderHeader { .. } => None,
+                })
                 .cloned();
             if let Some(model) = selected {
                 if let Some(sid) = app.session_id.clone() {

@@ -182,8 +182,6 @@ pub(super) fn draw_start(f: &mut Frame, app: &mut App) {
         Span::styled("new  ", Theme::status()),
         Span::styled("C-x s ", Theme::status_accent()),
         Span::styled("popup  ", Theme::status()),
-        Span::styled("C-x m ", Theme::status_accent()),
-        Span::styled("model  ", Theme::status()),
         Span::styled("q ", Theme::status_accent()),
         Span::styled("quit", Theme::status()),
     ]);

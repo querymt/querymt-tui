@@ -671,6 +671,17 @@ pub enum PopupItem {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelPopupItem {
+    ProviderHeader {
+        provider: String,
+        model_count: usize,
+    },
+    Model {
+        model_idx: usize,
+    },
+}
+
 pub struct App {
     pub screen: Screen,
     pub popup: Popup,
@@ -1006,6 +1017,68 @@ impl App {
                 })
                 .collect()
         }
+    }
+
+    pub fn visible_model_popup_items(&self) -> Vec<ModelPopupItem> {
+        let filtered = self.filtered_models();
+        let mut items = Vec::new();
+        let mut current_provider: Option<&str> = None;
+
+        for model in filtered {
+            if current_provider != Some(model.provider.as_str()) {
+                current_provider = Some(model.provider.as_str());
+                let provider_count = self
+                    .filtered_models()
+                    .into_iter()
+                    .filter(|m| m.provider == model.provider)
+                    .count();
+                items.push(ModelPopupItem::ProviderHeader {
+                    provider: model.provider.clone(),
+                    model_count: provider_count,
+                });
+            }
+            if let Some(model_idx) = self.models.iter().position(|m| m.id == model.id) {
+                items.push(ModelPopupItem::Model { model_idx });
+            }
+        }
+
+        items
+    }
+
+    pub fn current_mode_model_cursor(&self) -> usize {
+        let target = self.get_mode_model_preference(&self.agent_mode).or(
+            match (
+                self.current_provider.as_deref(),
+                self.current_model.as_deref(),
+            ) {
+                (Some(provider), Some(model)) => Some((provider, model)),
+                _ => None,
+            },
+        );
+
+        let Some((provider, model)) = target else {
+            return self
+                .visible_model_popup_items()
+                .iter()
+                .position(|item| matches!(item, ModelPopupItem::Model { .. }))
+                .unwrap_or(0);
+        };
+
+        self.visible_model_popup_items()
+            .iter()
+            .position(|item| match item {
+                ModelPopupItem::Model { model_idx } => self
+                    .models
+                    .get(*model_idx)
+                    .is_some_and(|entry| entry.provider == provider && entry.model == model),
+                ModelPopupItem::ProviderHeader { .. } => false,
+            })
+            .unwrap_or_else(|| {
+                self.visible_model_popup_items()
+                    .iter()
+                    .position(|item| matches!(item, ModelPopupItem::Model { .. }))
+                    .unwrap_or(0)
+            })
     }
 
     pub fn push_log(&mut self, level: LogLevel, target: &'static str, message: impl Into<String>) {

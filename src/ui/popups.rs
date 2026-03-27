@@ -1,6 +1,7 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
+    style::Modifier,
     text::{Line, Span},
     widgets::{Block, Clear, List, ListItem, ListState, Paragraph},
 };
@@ -37,8 +38,24 @@ pub(crate) fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 // ── Model popup ───────────────────────────────────────────────────────────────
 
 pub(super) fn draw_model_popup(f: &mut Frame, app: &App) {
+    use crate::app::ModelPopupItem;
+
+    const MODEL_MARKER_COL_W: u16 = 3;
+    const MODEL_LABEL_MAX_W: u16 = 44;
+    const MODEL_POPUP_MAX_W: u16 = MODEL_MARKER_COL_W + MODEL_LABEL_MAX_W + 2;
+    const MODEL_POPUP_MIN_W: u16 = 30;
+
     let area = f.area();
-    let popup_area = centered_rect(60, 60, area);
+    let popup_width = area
+        .width
+        .saturating_sub(4)
+        .clamp(MODEL_POPUP_MIN_W, MODEL_POPUP_MAX_W);
+    let popup_area = Rect {
+        x: area.x + area.width.saturating_sub(popup_width) / 2,
+        y: area.y + area.height.saturating_sub(area.height * 60 / 100) / 2,
+        width: popup_width,
+        height: area.height * 60 / 100,
+    };
 
     f.render_widget(Clear, popup_area);
     f.render_widget(Block::default().style(Theme::popup_bg()), popup_area);
@@ -53,21 +70,19 @@ pub(super) fn draw_model_popup(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // title
-            Constraint::Length(1), // filter
-            Constraint::Length(1), // spacer
-            Constraint::Min(1),    // list
-            Constraint::Length(1), // hint
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
         ])
         .split(inner);
 
-    // title
     f.render_widget(
         Paragraph::new(Span::styled("select model", Theme::popup_title())).style(Theme::popup_bg()),
         chunks[0],
     );
 
-    // filter
     let filter_line = Line::from(vec![
         Span::styled("> ", Theme::popup_title()),
         Span::styled(app.model_filter.clone(), Theme::popup_bg()),
@@ -76,37 +91,114 @@ pub(super) fn draw_model_popup(f: &mut Frame, app: &App) {
         Paragraph::new(filter_line).style(Theme::popup_bg()),
         chunks[1],
     );
-
     f.set_cursor_position((chunks[1].x + 2 + app.model_filter.len() as u16, chunks[1].y));
 
-    // model list
-    let filtered = app.filtered_models();
-    let items: Vec<ListItem> = filtered
+    let list_w = chunks[3].width as usize;
+    let current_mode_target = app.get_mode_model_preference(&app.agent_mode).or(
+        match (
+            app.current_provider.as_deref(),
+            app.current_model.as_deref(),
+        ) {
+            (Some(provider), Some(model)) => Some((provider, model)),
+            _ => None,
+        },
+    );
+
+    let items: Vec<ListItem> = app
+        .visible_model_popup_items()
         .iter()
         .enumerate()
-        .map(|(i, m)| {
-            let (main_style, dim_style) = if i == app.model_cursor {
-                (Theme::selected(), Theme::selected())
-            } else {
-                (Theme::popup_bg(), Theme::status())
-            };
-            ListItem::new(Line::from(vec![
-                Span::styled(format!(" {} ", m.provider), dim_style),
-                Span::styled(m.label.clone(), main_style),
-            ]))
+        .map(|(i, item)| match item {
+            ModelPopupItem::ProviderHeader {
+                provider,
+                model_count,
+            } => {
+                let selected = i == app.model_cursor;
+                let marker = COLLAPSE_CLOSED;
+                let count = format!(" {model_count}");
+                let avail = list_w.saturating_sub(4 + count.chars().count());
+                let label = if provider.chars().count() > avail {
+                    let t: String = provider.chars().take(avail.saturating_sub(1)).collect();
+                    format!("{t}{ELLIPSIS}")
+                } else {
+                    provider.clone()
+                };
+                let gap = avail.saturating_sub(label.chars().count());
+                let marker_style = if selected {
+                    Theme::selected()
+                } else {
+                    Theme::status_accent()
+                };
+                let provider_style = marker_style.add_modifier(Modifier::BOLD);
+                let dim_style = if selected {
+                    Theme::selected()
+                } else {
+                    Theme::status()
+                };
+                ListItem::new(Line::from(vec![
+                    Span::styled(format!(" {marker} "), marker_style),
+                    Span::styled(label, provider_style),
+                    Span::styled(" ".repeat(gap), dim_style),
+                    Span::styled(count, dim_style),
+                ]))
+            }
+            ModelPopupItem::Model { model_idx } => {
+                let selected = i == app.model_cursor;
+                let model = &app.models[*model_idx];
+                let is_current = current_mode_target.is_some_and(|(provider, model_name)| {
+                    provider == model.provider && model_name == model.model
+                });
+                let marker = if is_current { " ● " } else { "   " };
+                let avail = list_w.saturating_sub(marker.chars().count());
+                let label = if model.label.chars().count() > avail {
+                    let t: String = model.label.chars().take(avail.saturating_sub(1)).collect();
+                    format!("{t}{ELLIPSIS}")
+                } else {
+                    model.label.clone()
+                };
+                let gap = avail.saturating_sub(label.chars().count());
+                let main_style = if selected {
+                    Theme::selected()
+                } else {
+                    Theme::popup_bg()
+                };
+                let marker_style = if is_current {
+                    Theme::status_accent().bg(if selected {
+                        Theme::bg_hl()
+                    } else {
+                        Theme::bg_dim()
+                    })
+                } else if selected {
+                    Theme::selected()
+                } else {
+                    Theme::status()
+                };
+                ListItem::new(Line::from(vec![
+                    Span::styled(marker, marker_style),
+                    Span::styled(label, main_style),
+                    Span::styled(" ".repeat(gap), main_style),
+                ]))
+            }
         })
         .collect();
 
     let list = List::new(items).block(Block::default().style(Theme::popup_bg()));
-    let mut state = ListState::default().with_selected(Some(app.model_cursor));
+    let visible_rows = chunks[3].height as usize;
+    let offset = app
+        .model_cursor
+        .saturating_sub(visible_rows.saturating_sub(1));
+    let mut state = ListState::default()
+        .with_offset(offset)
+        .with_selected(Some(app.model_cursor));
     f.render_stateful_widget(list, chunks[3], &mut state);
 
-    // hint
-    f.render_widget(
-        Paragraph::new(Span::styled(" esc cancel  enter select", Theme::status()))
-            .style(Theme::popup_bg()),
-        chunks[4],
-    );
+    let hint = Line::from(vec![
+        Span::styled(" esc ", Theme::status_accent()),
+        Span::styled("cancel  ", Theme::status()),
+        Span::styled("enter ", Theme::status_accent()),
+        Span::styled("select", Theme::status()),
+    ]);
+    f.render_widget(Paragraph::new(hint).style(Theme::popup_bg()), chunks[4]);
 }
 
 // ── Session popup ─────────────────────────────────────────────────────────────
