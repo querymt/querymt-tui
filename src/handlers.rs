@@ -101,7 +101,7 @@ pub(crate) fn handle_elicitation_key(
         }
 
         // ── Text / number input ───────────────────────────────────────────────
-        KeyCode::Char(c) => {
+        KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
             let kind = state.current_field().kind.clone();
             if matches!(
                 kind,
@@ -474,7 +474,14 @@ pub(crate) fn handle_sessions_key(
         _ => {}
     }
 
-    match apply_sessions_key(app, key.code) {
+    match apply_sessions_key(
+        app,
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            KeyCode::Null
+        } else {
+            key.code
+        },
+    ) {
         SessionKeyAction::LoadSession { session_id } => {
             cmd_tx.send(ClientMsg::LoadSession {
                 session_id: session_id.clone(),
@@ -508,7 +515,14 @@ pub(crate) fn handle_session_popup_key(
         return Ok(());
     }
 
-    match apply_popup_session_key(app, key.code) {
+    match apply_popup_session_key(
+        app,
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            KeyCode::Null
+        } else {
+            key.code
+        },
+    ) {
         SessionKeyAction::LoadSession { session_id } => {
             cmd_tx.send(ClientMsg::LoadSession {
                 session_id: session_id.clone(),
@@ -641,7 +655,7 @@ pub(crate) fn handle_log_popup_key(app: &mut App, key: KeyEvent) -> anyhow::Resu
             app.cycle_log_level_filter();
             app.log_cursor = app.filtered_logs().len().saturating_sub(1);
         }
-        KeyCode::Char(c) => {
+        KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.log_filter.push(c);
             app.log_cursor = 0;
         }
@@ -692,7 +706,7 @@ pub(crate) fn handle_new_session_popup_key(
             }
             app.refresh_new_session_completion();
         }
-        KeyCode::Char(c) => {
+        KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.new_session_path.insert(app.new_session_cursor, c);
             app.new_session_cursor += 1;
             app.refresh_new_session_completion();
@@ -802,7 +816,7 @@ pub(crate) fn handle_theme_popup_key(app: &mut App, key: KeyEvent) -> anyhow::Re
             app.theme_filter.pop();
             app.theme_cursor = 0;
         }
-        KeyCode::Char(c) => {
+        KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.theme_filter.push(c);
             app.theme_cursor = 0;
         }
@@ -869,7 +883,7 @@ pub(crate) fn handle_chat_key(
                 cmd_tx.send(msg)?;
             }
         }
-        KeyCode::Char(c) => {
+        KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
             if !input_blocked {
                 app.input_insert(c);
                 if let Some(msg) = app.request_file_index_if_needed() {
@@ -1049,7 +1063,7 @@ pub(crate) fn handle_auth_popup_key(
                 app.auth_filter.pop();
                 app.auth_cursor = 0;
             }
-            KeyCode::Char(c) => {
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 app.auth_filter.push(c);
                 app.auth_cursor = 0;
             }
@@ -1083,7 +1097,7 @@ pub(crate) fn handle_auth_popup_key(
                     cmd_tx.send(ClientMsg::ClearApiToken { provider })?;
                 }
             }
-            KeyCode::Char(c) => {
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 app.auth_api_key_input.insert(app.auth_api_key_cursor, c);
                 app.auth_api_key_cursor += c.len_utf8();
             }
@@ -1147,7 +1161,7 @@ pub(crate) fn handle_auth_popup_key(
                     }
                 }
             }
-            KeyCode::Char(c) => {
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 app.auth_oauth_response
                     .insert(app.auth_oauth_response_cursor, c);
                 app.auth_oauth_response_cursor += c.len_utf8();
@@ -1289,7 +1303,7 @@ pub(crate) fn handle_model_popup_key(
             app.model_filter.pop();
             app.model_cursor = 0;
         }
-        KeyCode::Char(c) => {
+        KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.model_filter.push(c);
             app.model_cursor = 0;
         }

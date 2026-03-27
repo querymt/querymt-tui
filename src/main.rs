@@ -1155,6 +1155,7 @@ async fn run_loop(
             }) => {
                 if event::poll(Duration::from_millis(0))?
                     && let Event::Key(key) = event::read()?
+                    && key.kind == crossterm::event::KeyEventKind::Press
                 {
                     let action = handle_key(app, key, cmd_tx)?;
                     if matches!(action, AppAction::OpenExternalEditor) {
