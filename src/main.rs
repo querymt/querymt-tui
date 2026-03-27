@@ -1147,6 +1147,14 @@ async fn run_loop(
                             format!("server stopped ({reason}) — restarting..."),
                         );
                     }
+                    ServerEvent::FallingBackToDashboard => {
+                        app.server_state = ServerState::Starting;
+                        app.set_status(
+                            app::LogLevel::Info,
+                            "server",
+                            "--api unsupported, retrying with --dashboard...",
+                        );
+                    }
                 }
             }
             // terminal input

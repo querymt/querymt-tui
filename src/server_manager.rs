@@ -34,6 +34,8 @@ pub enum ServerEvent {
     StartFailed { error: String },
     /// Server process exited (will be restarted if owner).
     Stopped { reason: String },
+    /// `--api` start failed; retrying with `--dashboard` for older qmtcode builds.
+    FallingBackToDashboard,
 }
 
 /// Server lifecycle state stored on [`crate::app::App`].
@@ -214,6 +216,13 @@ pub async fn supervisor(
     let is_owner = _lock_guard.is_some();
     let ready_timeout = config.ready_timeout.unwrap_or(Duration::from_secs(15));
 
+    // Fallback: when the default Api mode is in use (no custom binary_args), and
+    // the server fails to start, automatically retry with --dashboard so that
+    // users with older qmtcode builds (which lack --api) are not stuck.
+    let can_fallback = config.launch_mode == ServerLaunchMode::Api && config.binary_args.is_empty();
+    let mut effective_mode = config.launch_mode;
+    let mut api_fallback_done = false;
+
     loop {
         // ── Phase 1: server already running — wait for it to go down ──────
         if probe(&config.addr).await {
@@ -248,7 +257,7 @@ pub async fn supervisor(
         // ── Phase 3: we are the owner, spawn the server ───────────────────
         let _ = event_tx.send(ServerEvent::Starting);
 
-        let args = build_spawn_args(&config.addr, config.launch_mode, &config.binary_args);
+        let args = build_spawn_args(&config.addr, effective_mode, &config.binary_args);
 
         let mut child = match tokio::process::Command::new(&binary)
             .args(&args)
@@ -269,13 +278,47 @@ pub async fn supervisor(
             }
         };
 
-        if wait_until_ready(&config.addr, ready_timeout).await {
-            let _ = event_tx.send(ServerEvent::Started);
-        } else {
+        // Wait for the server to accept connections, bailing early if the
+        // child exits first (e.g. it rejected the --api flag and quit).
+        let server_up = {
+            let deadline = tokio::time::Instant::now() + ready_timeout;
+            loop {
+                if probe(&config.addr).await {
+                    break true;
+                }
+                if let Ok(Some(_)) = child.try_wait() {
+                    // Child exited before the port was open; one final probe
+                    // in case it daemonised and the parent just exited.
+                    break probe(&config.addr).await;
+                }
+                if tokio::time::Instant::now() >= deadline {
+                    break false;
+                }
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+        };
+
+        if !server_up {
+            let _ = child.kill().await;
+
+            // First failure with --api: immediately retry with --dashboard.
+            if can_fallback && !api_fallback_done {
+                api_fallback_done = true;
+                effective_mode = ServerLaunchMode::Dashboard;
+                let _ = event_tx.send(ServerEvent::FallingBackToDashboard);
+                continue;
+            }
+
             let _ = event_tx.send(ServerEvent::StartFailed {
-                error: "server not responding after 15 s".into(),
+                error: format!("server not responding after {} s", ready_timeout.as_secs()),
             });
+            tokio::select! {
+                _ = shutdown_rx.recv() => return,
+                _ = tokio::time::sleep(Duration::from_secs(5)) => continue,
+            }
         }
+
+        let _ = event_tx.send(ServerEvent::Started);
 
         tokio::select! {
             _ = shutdown_rx.recv() => {
@@ -691,5 +734,159 @@ mod tests {
         );
 
         let _ = shutdown_tx.send(()).await;
+    }
+
+    // ── --api → --dashboard fallback ─────────────────────────────────────────
+
+    /// When launch_mode=Api and binary_args is empty, a binary that exits
+    /// immediately should trigger FallingBackToDashboard then a second Starting.
+    #[tokio::test]
+    async fn supervisor_falls_back_to_dashboard_on_api_failure() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+
+        // `true` exits immediately with success; server never listens.
+        let config = ServerManagerConfig {
+            addr: format!("127.0.0.1:{port}"),
+            launch_mode: ServerLaunchMode::Api,
+            binary_args: vec![],
+            shutdown_on_exit: true,
+            lock_path: Some(temp_lock_path("fallback-api")),
+            ready_timeout: Some(Duration::from_millis(300)),
+        };
+
+        tokio::spawn(supervisor(
+            config,
+            OsString::from("true"),
+            event_tx,
+            shutdown_rx,
+        ));
+
+        // Collect events until we see FallingBackToDashboard or give up.
+        let mut saw_fallback = false;
+        let mut saw_second_starting = false;
+        let mut events_seen = 0;
+        loop {
+            match tokio::time::timeout(Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(ServerEvent::FallingBackToDashboard)) => {
+                    saw_fallback = true;
+                }
+                Ok(Some(ServerEvent::Starting)) if saw_fallback => {
+                    saw_second_starting = true;
+                    break;
+                }
+                Ok(Some(_)) => {}
+                _ => break,
+            }
+            events_seen += 1;
+            if events_seen > 10 {
+                break;
+            }
+        }
+
+        let _ = shutdown_tx.send(()).await;
+        assert!(saw_fallback, "expected FallingBackToDashboard event");
+        assert!(
+            saw_second_starting,
+            "expected a second Starting after fallback"
+        );
+    }
+
+    /// When binary_args is non-empty, the fallback must NOT fire even if the
+    /// binary exits immediately — the user has overridden the args explicitly.
+    #[tokio::test]
+    async fn supervisor_no_fallback_when_binary_args_set() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+
+        let config = ServerManagerConfig {
+            addr: format!("127.0.0.1:{port}"),
+            launch_mode: ServerLaunchMode::Api,
+            binary_args: vec!["--custom-arg".into()], // non-empty → no fallback
+            shutdown_on_exit: true,
+            lock_path: Some(temp_lock_path("no-fallback-args")),
+            ready_timeout: Some(Duration::from_millis(300)),
+        };
+
+        tokio::spawn(supervisor(
+            config,
+            OsString::from("true"),
+            event_tx,
+            shutdown_rx,
+        ));
+
+        // Drain a handful of events; none should be FallingBackToDashboard.
+        let mut saw_fallback = false;
+        for _ in 0..6 {
+            match tokio::time::timeout(Duration::from_secs(3), event_rx.recv()).await {
+                Ok(Some(ServerEvent::FallingBackToDashboard)) => {
+                    saw_fallback = true;
+                    break;
+                }
+                Ok(Some(ServerEvent::StartFailed { .. })) => break,
+                Ok(Some(_)) => {}
+                _ => break,
+            }
+        }
+
+        let _ = shutdown_tx.send(()).await;
+        assert!(
+            !saw_fallback,
+            "FallingBackToDashboard should not fire when binary_args is set"
+        );
+    }
+
+    /// When launch_mode is Dashboard from the start, no fallback should fire.
+    #[tokio::test]
+    async fn supervisor_no_fallback_when_mode_is_dashboard() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+
+        let config = ServerManagerConfig {
+            addr: format!("127.0.0.1:{port}"),
+            launch_mode: ServerLaunchMode::Dashboard, // already dashboard
+            binary_args: vec![],
+            shutdown_on_exit: true,
+            lock_path: Some(temp_lock_path("no-fallback-dashboard")),
+            ready_timeout: Some(Duration::from_millis(300)),
+        };
+
+        tokio::spawn(supervisor(
+            config,
+            OsString::from("true"),
+            event_tx,
+            shutdown_rx,
+        ));
+
+        let mut saw_fallback = false;
+        for _ in 0..6 {
+            match tokio::time::timeout(Duration::from_secs(3), event_rx.recv()).await {
+                Ok(Some(ServerEvent::FallingBackToDashboard)) => {
+                    saw_fallback = true;
+                    break;
+                }
+                Ok(Some(ServerEvent::StartFailed { .. })) => break,
+                Ok(Some(_)) => {}
+                _ => break,
+            }
+        }
+
+        let _ = shutdown_tx.send(()).await;
+        assert!(
+            !saw_fallback,
+            "FallingBackToDashboard should not fire when mode is already Dashboard"
+        );
     }
 }
