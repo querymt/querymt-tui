@@ -9,7 +9,7 @@ use crate::app::{ActivityState, App, ChatEntry, SessionOp, ToolDetail};
 use crate::markdown;
 use crate::theme::Theme;
 
-use super::{OUTCOME_BULLET, build_input_visual_layout, draw_header};
+use super::{INPUT_OVERLINE, OUTCOME_BULLET, build_input_visual_layout, draw_header};
 
 // ── Spinner ───────────────────────────────────────────────────────────────────
 
@@ -618,7 +618,8 @@ pub(super) fn draw_chat(f: &mut Frame, app: &mut App) {
         _ if app.elicitation.is_some() => Theme::input_border_thinking(), // accent while waiting
         _ => Theme::mode_border(&app.agent_mode),
     };
-    let border_line = Paragraph::new("▔".repeat(chunks[4].width as usize)).style(border_style);
+    let border_line =
+        Paragraph::new(INPUT_OVERLINE.repeat(chunks[4].width as usize)).style(border_style);
     f.render_widget(border_line, chunks[4]);
 
     // input area

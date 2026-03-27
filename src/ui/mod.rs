@@ -190,6 +190,7 @@ pub(super) const COLOR_SWATCH: &str = "\u{25A0}"; // ■ black square  – theme
 pub(crate) const ELLIPSIS: &str = "\u{2026}"; // … horizontal ellipsis – truncation marker
 pub(super) const ARROW_UP: &str = "\u{2191}"; // ↑ upwards arrow
 pub(super) const ARROW_DOWN: &str = "\u{2193}"; // ↓ downwards arrow
+pub(crate) const INPUT_OVERLINE: &str = "\u{00AF}"; // ¯ overline-like separator above chat input
 pub(crate) const MD_HRULE_CHAR: &str = "\u{2500}"; // ─ box drawings light horizontal – HR
 pub(crate) const MD_BULLET: &str = "\u{2022} "; // • bullet – unordered list item prefix
 
