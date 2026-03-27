@@ -51,12 +51,42 @@ fn popup_log_level_style(level: LogLevel) -> ratatui::style::Style {
     }
 }
 
+fn popup_mode_marker_modes<'a>(
+    app: &'a App,
+    model: &'a crate::protocol::ModelEntry,
+) -> Vec<&'static str> {
+    let fallback_current = match (
+        app.current_provider.as_deref(),
+        app.current_model.as_deref(),
+    ) {
+        (Some(provider), Some(model_name)) => Some((provider, model_name)),
+        _ => None,
+    };
+
+    // TODO: Extend marker support to include review mode once we want all mode-model bindings visible here.
+    ["build", "plan"]
+        .into_iter()
+        .filter(|mode| {
+            let target = app
+                .get_mode_model_preference(mode)
+                .or(if app.agent_mode == *mode {
+                    fallback_current
+                } else {
+                    None
+                });
+            target.is_some_and(|(provider, model_name)| {
+                provider == model.provider && model_name == model.model
+            })
+        })
+        .collect()
+}
+
 // ── Model popup ───────────────────────────────────────────────────────────────
 
 pub(super) fn draw_model_popup(f: &mut Frame, app: &App) {
     use crate::app::ModelPopupItem;
 
-    const MODEL_MARKER_COL_W: u16 = 3;
+    const MODEL_MARKER_COL_W: u16 = 4;
     const MODEL_LABEL_MAX_W: u16 = 44;
     const MODEL_POPUP_MAX_W: u16 = MODEL_MARKER_COL_W + MODEL_LABEL_MAX_W + 2;
     const MODEL_POPUP_MIN_W: u16 = 30;
@@ -110,15 +140,6 @@ pub(super) fn draw_model_popup(f: &mut Frame, app: &App) {
     f.set_cursor_position((chunks[1].x + 2 + app.model_filter.len() as u16, chunks[1].y));
 
     let list_w = chunks[3].width as usize;
-    let current_mode_target = app.get_mode_model_preference(&app.agent_mode).or(
-        match (
-            app.current_provider.as_deref(),
-            app.current_model.as_deref(),
-        ) {
-            (Some(provider), Some(model)) => Some((provider, model)),
-            _ => None,
-        },
-    );
 
     let items: Vec<ListItem> = app
         .visible_model_popup_items()
@@ -161,11 +182,14 @@ pub(super) fn draw_model_popup(f: &mut Frame, app: &App) {
             ModelPopupItem::Model { model_idx } => {
                 let selected = i == app.model_cursor;
                 let model = &app.models[*model_idx];
-                let is_current = current_mode_target.is_some_and(|(provider, model_name)| {
-                    provider == model.provider && model_name == model.model
-                });
-                let marker = if is_current { " ● " } else { "   " };
-                let avail = list_w.saturating_sub(marker.chars().count());
+                let marker_modes = popup_mode_marker_modes(app, model);
+                let marker_bg = if selected {
+                    Theme::bg_hl()
+                } else {
+                    Theme::bg_dim()
+                };
+                let marker_w = MODEL_MARKER_COL_W as usize;
+                let avail = list_w.saturating_sub(marker_w);
                 let label = if model.label.chars().count() > avail {
                     let t: String = model.label.chars().take(avail.saturating_sub(1)).collect();
                     format!("{t}{ELLIPSIS}")
@@ -178,22 +202,23 @@ pub(super) fn draw_model_popup(f: &mut Frame, app: &App) {
                 } else {
                     Theme::popup_bg()
                 };
-                let marker_style = if is_current {
-                    Theme::status_accent().bg(if selected {
-                        Theme::bg_hl()
-                    } else {
-                        Theme::bg_dim()
-                    })
-                } else if selected {
-                    Theme::selected()
-                } else {
-                    Theme::status()
-                };
-                ListItem::new(Line::from(vec![
-                    Span::styled(marker, marker_style),
-                    Span::styled(label, main_style),
-                    Span::styled(" ".repeat(gap), main_style),
-                ]))
+                let mut spans = Vec::with_capacity(1 + marker_modes.len() * 2 + 2);
+                spans.push(Span::styled(" ", main_style));
+                for mode in &marker_modes {
+                    spans.push(Span::styled(
+                        "●",
+                        ratatui::style::Style::default()
+                            .fg(Theme::mode_color(mode))
+                            .bg(marker_bg),
+                    ));
+                }
+                spans.push(Span::styled(
+                    " ".repeat(marker_w.saturating_sub(1 + marker_modes.len())),
+                    main_style,
+                ));
+                spans.push(Span::styled(label, main_style));
+                spans.push(Span::styled(" ".repeat(gap), main_style));
+                ListItem::new(Line::from(spans))
             }
         })
         .collect();
@@ -331,12 +356,12 @@ pub(super) fn draw_session_popup(f: &mut Frame, app: &App) {
                     let title = s.title.as_deref().unwrap_or("(untitled)");
 
                     let is_active = app.session_id.as_deref() == Some(s.session_id.as_str());
-                    let id_part = format!("   {id_short} ");
-                    let active_part = if is_active { "  ●" } else { "   " };
+                    let marker_part = if is_active { " ● " } else { "   " };
+                    let id_part = format!(" {id_short} ");
                     let time_part = format!(" {time_str:>7} ");
                     let avail = list_w.saturating_sub(
-                        id_part.chars().count()
-                            + active_part.chars().count()
+                        marker_part.chars().count()
+                            + id_part.chars().count()
                             + time_part.chars().count(),
                     );
                     let title_display = if title.chars().count() > avail {
@@ -347,26 +372,30 @@ pub(super) fn draw_session_popup(f: &mut Frame, app: &App) {
                     };
                     let title_gap = avail.saturating_sub(title_display.chars().count());
 
-                    let (main_style, dim_style, time_style) = if selected {
-                        (Theme::selected(), Theme::selected(), Theme::selected())
+                    let (main_style, dim_style, time_style, row_bg) = if selected {
+                        (
+                            Theme::selected(),
+                            Theme::selected(),
+                            Theme::selected(),
+                            Theme::bg_hl(),
+                        )
                     } else {
-                        (Theme::popup_bg(), Theme::status(), Theme::session_time())
+                        (
+                            Theme::popup_bg(),
+                            Theme::status(),
+                            Theme::session_time(),
+                            Theme::bg_dim(),
+                        )
                     };
-                    let active_style = if selected {
-                        Theme::selected()
-                    } else {
-                        Theme::status_accent()
-                    };
+                    let active_style = Theme::status_accent().bg(row_bg);
+                    let marker_style = if is_active { active_style } else { dim_style };
                     let id_style = if is_active { active_style } else { dim_style };
 
                     let mut spans = vec![
+                        Span::styled(marker_part, marker_style),
                         Span::styled(id_part, id_style),
                         Span::styled(title_display, main_style),
                         Span::styled(" ".repeat(title_gap), dim_style),
-                        Span::styled(
-                            active_part,
-                            if is_active { active_style } else { dim_style },
-                        ),
                     ];
                     spans.push(Span::styled(time_part, time_style));
 
@@ -402,7 +431,7 @@ pub(super) fn draw_session_popup(f: &mut Frame, app: &App) {
 /// ```text
 /// [marker][label padded to avail][■■■■■■■■■■■■■■■■]
 /// ```
-/// * `marker`   – `"* "` when `orig_idx == current_idx`, otherwise `"  "`
+/// * `marker`   – `"● "` when `orig_idx == current_idx`, otherwise `"  "`
 /// * `label`    – theme display name, truncated with `…` if needed
 /// * swatches   – 16 `■` chars, each coloured with its base16 slot colour
 ///
@@ -418,7 +447,11 @@ pub(crate) fn build_theme_list_item(
     // " " gap between label and swatches
     const GAP: usize = 1;
 
-    let marker = if orig_idx == current_idx { "* " } else { "  " };
+    let marker = if orig_idx == current_idx {
+        "● "
+    } else {
+        "  "
+    };
     let marker_w = marker.chars().count();
     let swatches_w = NUM_SWATCHES + GAP; // 16 ■ + 1 space
 
