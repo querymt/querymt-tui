@@ -26,7 +26,7 @@ use std::{
 use app::{App, Screen};
 use clap::Parser;
 use crossterm::{
-    event::{self, Event},
+    event::{self, Event, EventStream},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -44,6 +44,13 @@ enum ConnectionManagerEvent {
 fn reconnect_delay_ms(attempt: u32) -> u64 {
     let capped = attempt.min(5);
     250 * (1u64 << capped)
+}
+
+/// Derive a UI tick from wall-clock elapsed time.
+/// Each tick step ≈ 80 ms so spinner animations run at a consistent speed
+/// regardless of how fast or slow the event loop iterates.
+fn tick_from_elapsed(elapsed: Duration) -> u64 {
+    (elapsed.as_millis() / 80) as u64
 }
 
 #[cfg(test)]
@@ -107,6 +114,34 @@ mod tests {
         assert_eq!(reconnect_delay_ms(4), 4000);
         assert_eq!(reconnect_delay_ms(5), 8000);
         assert_eq!(reconnect_delay_ms(8), 8000);
+    }
+
+    #[test]
+    fn tick_from_elapsed_zero_is_zero() {
+        assert_eq!(tick_from_elapsed(Duration::ZERO), 0);
+    }
+
+    #[test]
+    fn tick_from_elapsed_advances_every_80ms() {
+        assert_eq!(tick_from_elapsed(Duration::from_millis(0)), 0);
+        assert_eq!(tick_from_elapsed(Duration::from_millis(79)), 0);
+        assert_eq!(tick_from_elapsed(Duration::from_millis(80)), 1);
+        assert_eq!(tick_from_elapsed(Duration::from_millis(159)), 1);
+        assert_eq!(tick_from_elapsed(Duration::from_millis(160)), 2);
+    }
+
+    #[test]
+    fn tick_from_elapsed_spinner_frame_changes_every_two_ticks() {
+        // spinner uses `(tick / 2) % frames.len()` — one visual frame per 2 ticks.
+        // With 80ms per tick, one spinner frame lasts 160ms.
+        let tick_at_0ms = tick_from_elapsed(Duration::from_millis(0));
+        let tick_at_150ms = tick_from_elapsed(Duration::from_millis(150));
+        let tick_at_160ms = tick_from_elapsed(Duration::from_millis(160));
+
+        // Same spinner frame within 160ms window
+        assert_eq!(tick_at_0ms / 2, tick_at_150ms / 2);
+        // Different spinner frame after 160ms
+        assert_ne!(tick_at_0ms / 2, tick_at_160ms / 2);
     }
 
     // ── Elicitation key handling ──────────────────────────────────────────────
@@ -1432,8 +1467,11 @@ async fn run_loop(
     sup_rx: &mut mpsc::UnboundedReceiver<server_manager::ServerEvent>,
     cmd_tx: &mpsc::UnboundedSender<ClientMsg>,
 ) -> anyhow::Result<()> {
+    // Native async terminal event stream — no spawn_blocking overhead per frame.
+    let mut term_events = EventStream::new();
+
     loop {
-        app.tick = app.tick.wrapping_add(1);
+        app.tick = tick_from_elapsed(app.started_at.elapsed());
         app.clear_expired_cancel_confirm();
         terminal.draw(|f| ui::draw(f, app))?;
 
@@ -1545,20 +1583,38 @@ async fn run_loop(
                     }
                 }
             }
-            // terminal input
-            _ = tokio::task::spawn_blocking(|| {
-                event::poll(Duration::from_millis(50)).unwrap_or(false)
-            }) => {
-                if event::poll(Duration::from_millis(0))?
-                    && let Event::Key(key) = event::read()?
+            // terminal input — native async, no thread pool overhead
+            Some(event_result) = term_events.next() => {
+                if let Ok(Event::Key(key)) = event_result
                     && key.kind == crossterm::event::KeyEventKind::Press
                 {
                     let action = handle_key(app, key, cmd_tx)?;
                     if matches!(action, AppAction::OpenExternalEditor) {
                         open_external_editor_with_terminal(terminal, app)?;
                     }
+                    if app.should_quit {
+                        return Ok(());
+                    }
+                    // Drain any remaining buffered key events before redrawing,
+                    // so fast typing doesn't queue one redraw per keystroke.
+                    while let Ok(true) = event::poll(Duration::from_millis(0)) {
+                        if let Ok(Event::Key(key)) = event::read()
+                            && key.kind == crossterm::event::KeyEventKind::Press
+                        {
+                            let action = handle_key(app, key, cmd_tx)?;
+                            if matches!(action, AppAction::OpenExternalEditor) {
+                                open_external_editor_with_terminal(terminal, app)?;
+                            }
+                            if app.should_quit {
+                                return Ok(());
+                            }
+                        }
+                    }
                 }
             }
+            // Spinner / animation refresh: when no events arrive, redraw
+            // periodically so spinners keep animating (~12.5 fps).
+            _ = tokio::time::sleep(Duration::from_millis(80)) => {}
         }
 
         if app.should_quit {
