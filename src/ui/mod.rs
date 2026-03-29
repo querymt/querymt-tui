@@ -365,6 +365,7 @@ mod tests {
     use ratatui::backend::Backend;
     use ratatui::layout::Position;
     use ratatui::widgets::ListItem;
+    use serial_test::serial;
     use std::time::{Duration, Instant};
 
     fn tool_call(name: &str) -> ChatEntry {
@@ -825,6 +826,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn draw_theme_popup_shows_current_theme_when_opened_on_short_terminal() {
         crate::theme::Theme::set_by_index(20);
         crate::theme::Theme::begin_frame();
@@ -854,6 +856,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn draw_theme_popup_highlights_current_theme_marker_with_accent() {
         crate::theme::Theme::set_by_index(20);
         crate::theme::Theme::begin_frame();

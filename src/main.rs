@@ -353,11 +353,12 @@ mod tests {
 #[cfg(test)]
 mod external_editor_tests {
     use super::*;
-    use crate::config::{ServerConfig, TuiConfig};
+    use crate::config::{ServerConfig, TestPersistenceGuard, TuiConfig};
     use crate::handlers::*;
     use app::ActivityState;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use protocol::PromptBlock;
+    use serial_test::serial;
 
     fn ctrl_x() -> KeyEvent {
         KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL)
@@ -733,7 +734,9 @@ mod external_editor_tests {
     }
 
     #[test]
+    #[serial]
     fn slash_mode_no_arg_cycles_mode() {
+        let _guard = TestPersistenceGuard::new("slash-mode-cycle");
         let (tx, mut rx) = mpsc::unbounded_channel::<ClientMsg>();
         let mut app = App::new();
         app.screen = Screen::Chat;
@@ -760,7 +763,9 @@ mod external_editor_tests {
     }
 
     #[test]
+    #[serial]
     fn slash_mode_plan_switches_to_plan() {
+        let _guard = TestPersistenceGuard::new("slash-mode-plan");
         let (tx, mut rx) = mpsc::unbounded_channel::<ClientMsg>();
         let mut app = App::new();
         app.screen = Screen::Chat;
@@ -827,7 +832,9 @@ mod external_editor_tests {
     }
 
     #[test]
+    #[serial]
     fn slash_thinking_high_sets_level() {
+        let _guard = TestPersistenceGuard::new("slash-thinking-high");
         let (tx, mut rx) = mpsc::unbounded_channel::<ClientMsg>();
         let mut app = App::new();
         app.screen = Screen::Chat;
@@ -851,7 +858,9 @@ mod external_editor_tests {
     }
 
     #[test]
+    #[serial]
     fn slash_thinking_auto_clears_level() {
+        let _guard = TestPersistenceGuard::new("slash-thinking-auto");
         let (tx, mut rx) = mpsc::unbounded_channel::<ClientMsg>();
         let mut app = App::new();
         app.screen = Screen::Chat;
@@ -876,7 +885,9 @@ mod external_editor_tests {
     }
 
     #[test]
+    #[serial]
     fn slash_thinking_med_alias_sets_medium() {
+        let _guard = TestPersistenceGuard::new("slash-thinking-med");
         let (tx, mut rx) = mpsc::unbounded_channel::<ClientMsg>();
         let mut app = App::new();
         app.screen = Screen::Chat;

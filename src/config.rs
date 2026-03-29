@@ -135,6 +135,12 @@ impl TuiConfig {
 
     /// Save to the default path (`~/.qmt/tui.toml`).
     pub fn save(&self) {
+        #[cfg(test)]
+        assert!(
+            config_path_override().lock().unwrap().is_some(),
+            "TuiConfig::save() called in test without config path override! \
+             Use TestPersistenceGuard to avoid writing to the real ~/.qmt/tui.toml."
+        );
         self.save_to_path(&Self::config_path());
     }
 
@@ -211,6 +217,12 @@ impl TuiCache {
 
     /// Save to the default path (`~/.cache/qmt/tui-cache.toml`).
     pub fn save(&self) {
+        #[cfg(test)]
+        assert!(
+            cache_path_override().lock().unwrap().is_some(),
+            "TuiCache::save() called in test without cache path override! \
+             Use TestPersistenceGuard to avoid writing to the real ~/.cache/qmt/tui-cache.toml."
+        );
         self.save_to_path(&Self::cache_path());
     }
 
